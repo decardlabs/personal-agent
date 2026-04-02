@@ -49,3 +49,17 @@
 - Migration command passed.
 - Build command passed.
 - Test suite passed (3 tests total).
+
+### Week 3 Memory Layer Update
+
+- Implemented session memory store for per-session runtime facts.
+- Implemented context snapshot memory provider.
+- Implemented persistent memory store backed by SQLite memory_facts table.
+- Added memory coordinator and integrated it into runTurn pipeline.
+- Added recall behavior: "recall last echo" reads persistent memory from prior turns.
+
+### Week 3 Validation
+
+- Migration command passed.
+- Build command passed.
+- Test suite passed (4 tests total).

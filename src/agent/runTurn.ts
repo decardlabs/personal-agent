@@ -4,6 +4,7 @@ import { runEchoTool } from '../tools/echoTool.js'
 import { transitionTo } from './stateMachine.js'
 import type { TurnEvent } from './types.js'
 import { detectEchoCommand, normalizeInput } from './inputNormalizer.js'
+import type { MemoryCoordinator } from '../memory/memoryCoordinator.js'
 
 export type TurnResult = {
   sessionId: string
@@ -29,12 +30,14 @@ function createEvent(
 export function runTurn(
   input: string,
   repository: SessionEventRepository,
+  memory: MemoryCoordinator,
   sessionId = randomUUID(),
 ): TurnResult {
   const turnId = randomUUID()
 
   transitionTo('normalizing_input')
   const normalizedInput = normalizeInput(input)
+  memory.session.set(sessionId, 'last_input', normalizedInput)
   repository.save(
     createEvent(sessionId, turnId, 'input_normalized', {
       input,
@@ -43,14 +46,24 @@ export function runTurn(
   )
 
   transitionTo('reasoning')
+  const context = memory.getContextSnapshot()
+  const rememberedLastEcho = memory.persistent.get('last_echo_output')
   repository.save(
     createEvent(sessionId, turnId, 'reasoning_started', {
       normalizedInput,
+      context,
+      rememberedLastEcho,
     }),
   )
 
   const echoPayload = detectEchoCommand(normalizedInput)
   let response = 'I can run echo only in this MVP. Try: echo hello'
+
+  if (normalizedInput.toLowerCase() === 'recall last echo') {
+    response = rememberedLastEcho
+      ? `Last echo was: ${rememberedLastEcho}`
+      : 'No echo memory yet.'
+  }
 
   if (echoPayload) {
     transitionTo('executing_tool')
@@ -62,6 +75,8 @@ export function runTurn(
     )
 
     const toolResult = runEchoTool({ content: echoPayload })
+    memory.persistent.set('last_echo_output', toolResult.output, 0.9)
+    memory.session.set(sessionId, 'last_response', toolResult.output)
     repository.save(
       createEvent(sessionId, turnId, 'tool_result_received', {
         toolName: 'echo',

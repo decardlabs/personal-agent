@@ -4,12 +4,18 @@ import { getCurrentState } from './agent/stateMachine.js'
 import { SessionEventRepository } from './storage/sessionEventRepository.js'
 import { runTurn } from './agent/runTurn.js'
 import { applyMigrations } from './storage/migrate.js'
+import { MemoryFactRepository } from './storage/memoryFactRepository.js'
+import { PersistentMemoryStore } from './memory/persistentMemory.js'
+import { createMemoryCoordinator } from './memory/memoryCoordinator.js'
 
 async function main(): Promise<void> {
   const logger = createLogger()
   const db = initializeDatabase()
   applyMigrations(db)
   const repository = new SessionEventRepository(db)
+  const memoryRepository = new MemoryFactRepository(db)
+  const persistentMemory = new PersistentMemoryStore(memoryRepository)
+  const memory = createMemoryCoordinator(persistentMemory)
 
   logger.info({ state: getCurrentState() }, 'personal-assistant bootstrap complete')
 
@@ -20,7 +26,7 @@ async function main(): Promise<void> {
   logger.info({ tableCount: row.count }, 'database connected')
 
   const input = process.argv.slice(2).join(' ') || 'echo hello world'
-  const result = runTurn(input, repository)
+  const result = runTurn(input, repository, memory)
   const events = repository.listByTurn(result.sessionId, result.turnId)
 
   logger.info(
