@@ -24,16 +24,19 @@ Establish project governance, records, and release baseline.
 - Cross-turn recall behavior implemented and validated
 - Week 4 permission policy and approval checkpoint integrated into turn flow
 - Risky input approval and reuse behaviors validated with tests
+- Week 5 replay test framework added with reusable runner and 5 representative replay cases
+- Added dedicated replay test command and validated replay pass rate
 
 ### Carry Over
 
-- Expand from echo-only flow to pluggable tool routing
-- Add integration tests for permission checkpoint and fallback response behavior
-- Introduce permission policy checkpoints into turn runner
+- Expand replay suite from 5 to 10 representative cases
+- Add timeout and cancellation behavior in turn runner
+- Add retry strategy for transient tool failures
 - Add richer permission scopes and expiration support
+- Expand from echo-only flow to pluggable tool routing
 
 ### Metrics
-
-- Planned items: 9
+11
+- Completed items: 11
 - Completed items: 9
 - Completion rate: 100%

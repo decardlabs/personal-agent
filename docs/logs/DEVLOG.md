@@ -77,3 +77,17 @@
 - Migration command passed.
 - Build command passed.
 - Test suite passed (6 tests total).
+
+### Week 5 Replay and Reliability Update
+
+- Added replay case definitions for representative turn scenarios.
+- Added reusable replay runner that executes multi-step cases against in-memory SQLite.
+- Added dedicated replay test suite and npm script (`test:replay`).
+- Updated engineering backlog to focus on timeout, retry, and replay expansion.
+
+### Week 5 Validation
+
+- Migration command passed.
+- Build command passed.
+- Full test suite passed (11 tests total).
+- Replay-only suite passed (5 replay cases).

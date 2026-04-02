@@ -115,13 +115,13 @@ Acceptance:
 - Release checklist is green.
 - Beta release record is completed.
 
-## Current Sprint Backlog (Start Now)
+## Current Sprint Backlog (Updated)
 
-1. Scaffold src module folders and entrypoint.
-2. Add package scripts: dev, build, test, migrate.
-3. Add SQLite baseline migration and repository layer.
-4. Implement turn event persistence.
-5. Add first smoke test for one-turn loop.
+1. Expand replay case set from 5 to 10 representative tasks.
+2. Add timeout and cancellation behavior in turn runner.
+3. Add retry policy for transient tool failures.
+4. Add replay summary report (pass/fail ratio and per-case timing).
+5. Add permission expiration checks in policy evaluator.
 
 ## Definition of Done
 

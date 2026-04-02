@@ -22,12 +22,15 @@ The format is based on Keep a Changelog and Semantic Versioning.
 - Added cross-turn recall command support ("recall last echo").
 - Added permission policy module for risky input detection and approval checks.
 - Added tool permission repository with persistent grant storage and reuse.
+- Added replay test framework with reusable case runner and 5 baseline replay scenarios.
+- Added dedicated replay test script for focused regression execution.
 
 ### Changed
 
 - Migration module now supports reusable apply function without import side effects.
 - Turn pipeline now stores and retrieves memory during reasoning and feedback stages.
 - Turn pipeline now enforces permission checkpoints and emits approval-related events.
+- Engineering backlog now tracks replay expansion and reliability behaviors (timeout/cancel/retry).
 
 ### Fixed
 
