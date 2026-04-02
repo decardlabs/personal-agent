@@ -26,17 +26,19 @@ Establish project governance, records, and release baseline.
 - Risky input approval and reuse behaviors validated with tests
 - Week 5 replay test framework added with reusable runner and 5 representative replay cases
 - Added dedicated replay test command and validated replay pass rate
+- Week 5 COMPLETE: timeout/cancel guard and retry loop added to turn runner
+- Extended TurnEventType with tool_timeout, tool_retry, turn_cancelled events
+- Replay suite expanded to 10 cases (edge: empty, whitespace, timeout, multi-turn, cold recall)
+- 18 tests total (7 unit + 10 replay + 1 index); all green
 
 ### Carry Over
 
-- Expand replay suite from 5 to 10 representative cases
-- Add timeout and cancellation behavior in turn runner
-- Add retry strategy for transient tool failures
-- Add richer permission scopes and expiration support
+- Week 6: pre-beta hardening, version bump to v0.2.0-beta.1
+- Add replay summary report (pass/fail ratio and per-case timing)
+- Add permission expiration checks in policy evaluator
 - Expand from echo-only flow to pluggable tool routing
 
 ### Metrics
-11
-- Completed items: 11
-- Completed items: 9
+
+- Completed items: 15
 - Completion rate: 100%

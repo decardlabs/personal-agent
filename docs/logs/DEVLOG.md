@@ -85,9 +85,17 @@
 - Added dedicated replay test suite and npm script (`test:replay`).
 - Updated engineering backlog to focus on timeout, retry, and replay expansion.
 
+### Week 5 Completion: Timeout, Retry, and Expanded Replay
+
+- Extended `TurnEventType` with `tool_timeout`, `tool_retry`, `turn_cancelled`.
+- Added `turnTimeoutMs` option: turn cancels with `turn_cancelled` event if elapsed >= limit.
+- Added `maxToolRetries` option: retries tool on error and emits `tool_retry` event per attempt.
+- Added injectable `echoToolRunner` to `TurnOptions` for test isolation.
+- Expanded replay suite from 5 to 10 cases covering: timeout, empty input, whitespace, multi-turn echo, and cold recall (no prior echo).
+
 ### Week 5 Validation
 
 - Migration command passed.
-- Build command passed.
-- Full test suite passed (11 tests total).
-- Replay-only suite passed (5 replay cases).
+- Build command passed (dist/index.js 13.67 KB).
+- Full test suite passed: 18 tests across 3 files (7 unit + 10 replay + 1 index).
+- Replay-only suite passed: 10 replay cases, all green.

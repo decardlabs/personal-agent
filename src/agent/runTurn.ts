@@ -17,6 +17,9 @@ export type TurnResult = {
 export type TurnOptions = {
   approveRisky?: boolean
   permissionScope?: string
+  turnTimeoutMs?: number
+  maxToolRetries?: number
+  echoToolRunner?: (args: { content: string }) => { output: string }
 }
 
 function createEvent(
@@ -43,6 +46,7 @@ export function runTurn(
   options: TurnOptions = {},
 ): TurnResult {
   const turnId = randomUUID()
+  const turnStartedAt = Date.now()
   const permissionScope = options.permissionScope ?? 'project'
 
   transitionTo('normalizing_input')
@@ -108,6 +112,18 @@ export function runTurn(
   }
 
   if (echoPayload && permissionDecision.allowed) {
+    const elapsedMs = Date.now() - turnStartedAt
+    if (options.turnTimeoutMs !== undefined && elapsedMs >= options.turnTimeoutMs) {
+      transitionTo('done')
+      repository.save(
+        createEvent(sessionId, turnId, 'tool_timeout', { toolName: 'echo', elapsedMs }),
+      )
+      repository.save(
+        createEvent(sessionId, turnId, 'turn_cancelled', { reason: 'timeout' }),
+      )
+      return { sessionId, turnId, response: 'Turn cancelled: tool execution timed out.' }
+    }
+
     transitionTo('executing_tool')
     repository.save(
       createEvent(sessionId, turnId, 'tool_called', {
@@ -116,7 +132,30 @@ export function runTurn(
       }),
     )
 
-    const toolResult = runEchoTool({ content: echoPayload })
+    const echoRunner = options.echoToolRunner ?? runEchoTool
+    const maxRetries = options.maxToolRetries ?? 0
+    let attempt = 0
+    let toolResult!: { output: string }
+    while (true) {
+      try {
+        toolResult = echoRunner({ content: echoPayload })
+        break
+      } catch (err) {
+        if (attempt < maxRetries) {
+          attempt++
+          repository.save(
+            createEvent(sessionId, turnId, 'tool_retry', {
+              toolName: 'echo',
+              attempt,
+              error: String(err),
+            }),
+          )
+        } else {
+          throw err
+        }
+      }
+    }
+
     memory.persistent.set('last_echo_output', toolResult.output, 0.9)
     memory.session.set(sessionId, 'last_response', toolResult.output)
     repository.save(

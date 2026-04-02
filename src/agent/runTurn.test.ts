@@ -159,4 +159,62 @@ describe('runTurn', () => {
     expect(secondEvents.some(event => event.eventType === 'permission_granted')).toBe(true)
     expect(secondEvents.some(event => event.eventType === 'permission_required')).toBe(false)
   })
+
+  it('cancels turn when turnTimeoutMs is 0', () => {
+    const db = initializeDatabase(':memory:')
+    applyMigrations(db)
+    const repository = new SessionEventRepository(db)
+    const memoryRepository = new MemoryFactRepository(db)
+    const memory = createMemoryCoordinator(
+      new PersistentMemoryStore(memoryRepository),
+    )
+    const permissionRepository = new ToolPermissionRepository(db)
+
+    const result = runTurn(
+      'echo timeout-test',
+      repository,
+      memory,
+      permissionRepository,
+      'session-timeout',
+      { turnTimeoutMs: 0 },
+    )
+    const events = repository.listByTurn(result.sessionId, result.turnId)
+
+    expect(result.response).toBe('Turn cancelled: tool execution timed out.')
+    expect(events.some(e => e.eventType === 'tool_timeout')).toBe(true)
+    expect(events.some(e => e.eventType === 'turn_cancelled')).toBe(true)
+    expect(events.some(e => e.eventType === 'tool_called')).toBe(false)
+  })
+
+  it('retries tool on transient error and succeeds', () => {
+    const db = initializeDatabase(':memory:')
+    applyMigrations(db)
+    const repository = new SessionEventRepository(db)
+    const memoryRepository = new MemoryFactRepository(db)
+    const memory = createMemoryCoordinator(
+      new PersistentMemoryStore(memoryRepository),
+    )
+    const permissionRepository = new ToolPermissionRepository(db)
+
+    let attempts = 0
+    const flakyRunner = (args: { content: string }) => {
+      attempts++
+      if (attempts === 1) throw new Error('transient error')
+      return { output: args.content }
+    }
+
+    const result = runTurn(
+      'echo retry-me',
+      repository,
+      memory,
+      permissionRepository,
+      'session-retry',
+      { maxToolRetries: 1, echoToolRunner: flakyRunner },
+    )
+    const events = repository.listByTurn(result.sessionId, result.turnId)
+
+    expect(result.response).toBe('Echo: retry-me')
+    expect(events.some(e => e.eventType === 'tool_retry')).toBe(true)
+    expect(events.some(e => e.eventType === 'tool_result_received')).toBe(true)
+  })
 })

@@ -24,6 +24,11 @@ The format is based on Keep a Changelog and Semantic Versioning.
 - Added tool permission repository with persistent grant storage and reuse.
 - Added replay test framework with reusable case runner and 5 baseline replay scenarios.
 - Added dedicated replay test script for focused regression execution.
+- Added `tool_timeout`, `tool_retry`, `turn_cancelled` event types to `TurnEventType`.
+- Added `turnTimeoutMs` option to cancel turns that exceed a configured duration.
+- Added `maxToolRetries` option to retry transient tool execution failures.
+- Added `echoToolRunner` injectable to `TurnOptions` for test isolation.
+- Expanded replay suite to 10 cases covering empty input, whitespace, timeout, multi-turn, and cold recall.
 
 ### Changed
 

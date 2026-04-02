@@ -39,6 +39,7 @@ export function runReplayCase(testCase: ReplayCase): ReplayCaseResult {
       testCase.sessionId,
       {
         approveRisky: step.approveRisky ?? false,
+        turnTimeoutMs: step.turnTimeoutMs,
       },
     )
 

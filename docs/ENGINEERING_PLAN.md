@@ -115,13 +115,14 @@ Acceptance:
 - Release checklist is green.
 - Beta release record is completed.
 
-## Current Sprint Backlog (Updated)
+## Current Sprint Backlog (Week 6)
 
-1. Expand replay case set from 5 to 10 representative tasks.
-2. Add timeout and cancellation behavior in turn runner.
-3. Add retry policy for transient tool failures.
-4. Add replay summary report (pass/fail ratio and per-case timing).
-5. Add permission expiration checks in policy evaluator.
+1. Stabilize error paths: ensure uncaught throws in tool runners produce graceful responses.
+2. Improve developer runbook: README quick-start, env setup, and contribution guide.
+3. Add replay summary report (pass/fail ratio and per-case elapsed time).
+4. Add permission expiration checks in `ToolPermissionRepository.hasPermission()`.
+5. Bump version to `v0.2.0-beta.1` and complete pre-release checklist.
+6. Create `v0.2.0-beta.1` release record and tag.
 
 ## Definition of Done
 

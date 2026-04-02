@@ -7,6 +7,9 @@ export type TurnEventType =
   | 'permission_granted'
   | 'tool_called'
   | 'tool_result_received'
+  | 'tool_timeout'
+  | 'tool_retry'
+  | 'turn_cancelled'
   | 'turn_completed'
 
 export type TurnEvent = {

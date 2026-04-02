@@ -3,6 +3,7 @@ import type { TurnEventType } from '../agent/types.js'
 export type ReplayStep = {
   input: string
   approveRisky?: boolean
+  turnTimeoutMs?: number
 }
 
 export type ReplayCase = {
@@ -62,5 +63,44 @@ export const replayCases: ReplayCase[] = [
     sessionId: 'replay-session-5',
     steps: [{ input: 'list all files please' }],
     expectedResponses: ['I can run echo only in this MVP. Try: echo hello'],
+  },
+  {
+    name: 'multi-turn echo sequence',
+    sessionId: 'replay-session-6',
+    steps: [
+      { input: 'echo first-message' },
+      { input: 'echo second-message' },
+    ],
+    expectedResponses: ['Echo: first-message', 'Echo: second-message'],
+  },
+  {
+    name: 'recall with no prior echo',
+    sessionId: 'replay-session-7',
+    steps: [{ input: 'recall last echo' }],
+    expectedResponses: ['No echo memory yet.'],
+  },
+  {
+    name: 'empty input treated as fallback',
+    sessionId: 'replay-session-8',
+    steps: [{ input: '' }],
+    expectedResponses: ['I can run echo only in this MVP. Try: echo hello'],
+  },
+  {
+    name: 'whitespace-only input treated as fallback',
+    sessionId: 'replay-session-9',
+    steps: [{ input: '   ' }],
+    expectedResponses: ['I can run echo only in this MVP. Try: echo hello'],
+  },
+  {
+    name: 'turn cancelled on timeout',
+    sessionId: 'replay-session-10',
+    steps: [{ input: 'echo hello', turnTimeoutMs: 0 }],
+    expectedResponses: ['Turn cancelled: tool execution timed out.'],
+    expectedEventTypes: [[
+      'input_normalized',
+      'reasoning_started',
+      'tool_timeout',
+      'turn_cancelled',
+    ]],
   },
 ]
