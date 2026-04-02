@@ -8,6 +8,16 @@ The format is based on Keep a Changelog and Semantic Versioning.
 
 ### Added
 
+### Changed
+
+### Fixed
+
+---
+
+## [0.2.0-beta.1] - 2026-04-02
+
+### Added
+
 - Initialized project documentation and lifecycle recording system.
 - Added roadmap, development log, sprint log, QA test log, and risk log templates.
 - Added ADR process and initial architecture decision.
@@ -29,6 +39,10 @@ The format is based on Keep a Changelog and Semantic Versioning.
 - Added `maxToolRetries` option to retry transient tool execution failures.
 - Added `echoToolRunner` injectable to `TurnOptions` for test isolation.
 - Expanded replay suite to 10 cases covering empty input, whitespace, timeout, multi-turn, and cold recall.
+- Added `tool_error` event type for graceful tool failure reporting.
+- Added permission expiry check: grants with a past `expires_at` are treated as not granted.
+- Added developer quick-start section to README with setup, run, and test instructions.
+- Added `ToolPermissionRepository` unit test suite covering grant, expiry, and no-permission paths.
 
 ### Changed
 

@@ -36,3 +36,44 @@ This subproject tracks development and release lifecycle for a personal intellig
 3. Record architecture decisions in ADR files.
 4. Update CHANGELOG for each user-visible change.
 5. Create release notes from template before each version tag.
+
+## Developer Quick-Start
+
+```bash
+# Install dependencies
+npm install
+
+# Run database migrations
+npm run migrate
+
+# Start the assistant (one turn)
+npm run dev
+
+# Build for production
+npm run build
+
+# Run all tests
+npm test
+
+# Run replay regression suite only
+npm run test:replay
+```
+
+### Approve risky inputs (for development)
+
+```bash
+node dist/index.js --approve-risky
+```
+
+### Project structure
+
+```
+src/
+	agent/         — turn pipeline, state machine, input normalisation
+	memory/        — session, context, and persistent memory stores
+	policies/      — permission evaluation and risk detection
+	storage/       — SQLite repositories and migration runner
+	tools/         — internal tool implementations
+	testing/       — replay test cases and runner
+	observability/ — structured logger
+```

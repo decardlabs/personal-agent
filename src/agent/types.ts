@@ -9,6 +9,7 @@ export type TurnEventType =
   | 'tool_result_received'
   | 'tool_timeout'
   | 'tool_retry'
+  | 'tool_error'
   | 'turn_cancelled'
   | 'turn_completed'
 

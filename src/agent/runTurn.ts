@@ -136,24 +136,38 @@ export function runTurn(
     const maxRetries = options.maxToolRetries ?? 0
     let attempt = 0
     let toolResult!: { output: string }
-    while (true) {
-      try {
-        toolResult = echoRunner({ content: echoPayload })
-        break
-      } catch (err) {
-        if (attempt < maxRetries) {
-          attempt++
-          repository.save(
-            createEvent(sessionId, turnId, 'tool_retry', {
-              toolName: 'echo',
-              attempt,
-              error: String(err),
-            }),
-          )
-        } else {
-          throw err
+    try {
+      while (true) {
+        try {
+          toolResult = echoRunner({ content: echoPayload })
+          break
+        } catch (err) {
+          if (attempt < maxRetries) {
+            attempt++
+            repository.save(
+              createEvent(sessionId, turnId, 'tool_retry', {
+                toolName: 'echo',
+                attempt,
+                error: String(err),
+              }),
+            )
+          } else {
+            throw err
+          }
         }
       }
+    } catch (err) {
+      transitionTo('done')
+      repository.save(
+        createEvent(sessionId, turnId, 'tool_error', {
+          toolName: 'echo',
+          error: String(err),
+        }),
+      )
+      repository.save(
+        createEvent(sessionId, turnId, 'turn_completed', { response: 'Tool execution failed. Please try again.' }),
+      )
+      return { sessionId, turnId, response: 'Tool execution failed. Please try again.' }
     }
 
     memory.persistent.set('last_echo_output', toolResult.output, 0.9)

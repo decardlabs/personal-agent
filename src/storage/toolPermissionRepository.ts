@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3'
 
 type ToolPermissionRow = {
   id: number
+  expires_at: string | null
 }
 
 export class ToolPermissionRepository {
@@ -10,14 +11,18 @@ export class ToolPermissionRepository {
   hasPermission(scope: string, permissionKey: string): boolean {
     const row = this.db
       .prepare(
-        `SELECT id
+        `SELECT id, expires_at
          FROM tool_permissions
          WHERE scope = ? AND permission_key = ?
          LIMIT 1`,
       )
       .get(scope, permissionKey) as ToolPermissionRow | undefined
 
-    return Boolean(row)
+    if (!row) return false
+    if (row.expires_at !== null && row.expires_at <= new Date().toISOString()) {
+      return false
+    }
+    return true
   }
 
   grant(

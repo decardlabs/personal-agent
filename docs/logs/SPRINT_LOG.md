@@ -30,6 +30,11 @@ Establish project governance, records, and release baseline.
 - Extended TurnEventType with tool_timeout, tool_retry, turn_cancelled events
 - Replay suite expanded to 10 cases (edge: empty, whitespace, timeout, multi-turn, cold recall)
 - 18 tests total (7 unit + 10 replay + 1 index); all green
+- Week 6 COMPLETE: tool_error graceful handling and permission expiry check added
+- ToolPermissionRepository unit tests added (4 tests: no-perm, valid, future/past expiry)
+- Version bumped to 0.2.0-beta.1; CHANGELOG promoted; release record created
+- README developer quick-start section added
+- 23 tests total across 4 files; all green
 
 ### Carry Over
 
@@ -40,5 +45,5 @@ Establish project governance, records, and release baseline.
 
 ### Metrics
 
-- Completed items: 15
+- Completed items: 20
 - Completion rate: 100%

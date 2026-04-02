@@ -99,3 +99,20 @@
 - Build command passed (dist/index.js 13.67 KB).
 - Full test suite passed: 18 tests across 3 files (7 unit + 10 replay + 1 index).
 - Replay-only suite passed: 10 replay cases, all green.
+
+### Week 6 Pre-Beta Hardening
+
+- Added `tool_error` event type and graceful catch block in turn runner for exhausted retries.
+- Added permission expiry check in `ToolPermissionRepository.hasPermission()`.
+- Added `ToolPermissionRepository` unit test suite (4 tests: no-perm, valid, future expiry, past expiry).
+- Added `returns graceful error response when all retries exhausted` test to runTurn suite.
+- Bumped version to `0.2.0-beta.1` in `VERSION`, `package.json`, and `CHANGELOG.md`.
+- Promoted `[Unreleased]` CHANGELOG section to `[0.2.0-beta.1] - 2026-04-02`.
+- Added developer quick-start section to README.
+- Created `docs/releases/records/v0.2.0-beta.1-release-record.md`.
+
+### Week 6 Validation
+
+- Build command passed (dist/index.js 14.31 KB).
+- Full test suite passed: 23 tests across 4 files.
+- Replay-only suite passed: 10 replay cases, all green.

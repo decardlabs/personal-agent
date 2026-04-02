@@ -217,4 +217,31 @@ describe('runTurn', () => {
     expect(events.some(e => e.eventType === 'tool_retry')).toBe(true)
     expect(events.some(e => e.eventType === 'tool_result_received')).toBe(true)
   })
+
+  it('returns graceful error response when all retries exhausted', () => {
+    const db = initializeDatabase(':memory:')
+    applyMigrations(db)
+    const repository = new SessionEventRepository(db)
+    const memoryRepository = new MemoryFactRepository(db)
+    const memory = createMemoryCoordinator(
+      new PersistentMemoryStore(memoryRepository),
+    )
+    const permissionRepository = new ToolPermissionRepository(db)
+
+    const alwaysThrows = () => { throw new Error('permanent failure') }
+
+    const result = runTurn(
+      'echo fail-me',
+      repository,
+      memory,
+      permissionRepository,
+      'session-error',
+      { maxToolRetries: 0, echoToolRunner: alwaysThrows },
+    )
+    const events = repository.listByTurn(result.sessionId, result.turnId)
+
+    expect(result.response).toBe('Tool execution failed. Please try again.')
+    expect(events.some(e => e.eventType === 'tool_error')).toBe(true)
+    expect(events.some(e => e.eventType === 'turn_completed')).toBe(true)
+  })
 })
