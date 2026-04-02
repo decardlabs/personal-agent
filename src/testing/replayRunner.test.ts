@@ -4,8 +4,8 @@ import { extractEventTypes, runReplayCase } from './replayRunner.js'
 
 describe('replay suite', () => {
   for (const testCase of replayCases) {
-    it(`replays: ${testCase.name}`, () => {
-      const result = runReplayCase(testCase)
+    it(`replays: ${testCase.name}`, async () => {
+      const result = await runReplayCase(testCase)
       const responses = result.stepResults.map(step => step.response)
 
       expect(responses).toEqual(testCase.expectedResponses)

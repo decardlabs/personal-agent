@@ -20,6 +20,13 @@ export type TurnOptions = {
   turnTimeoutMs?: number
   maxToolRetries?: number
   echoToolRunner?: (args: { content: string }) => { output: string }
+  llmResponder?: (args: {
+    input: string
+    sessionId: string
+    turnId: string
+    rememberedLastEcho: string | null
+    context: ReturnType<MemoryCoordinator['getContextSnapshot']>
+  }) => Promise<string>
 }
 
 function createEvent(
@@ -37,14 +44,14 @@ function createEvent(
   }
 }
 
-export function runTurn(
+export async function runTurn(
   input: string,
   repository: SessionEventRepository,
   memory: MemoryCoordinator,
   permissionRepository: ToolPermissionRepository,
   sessionId = randomUUID(),
   options: TurnOptions = {},
-): TurnResult {
+): Promise<TurnResult> {
   const turnId = randomUUID()
   const turnStartedAt = Date.now()
   const permissionScope = options.permissionScope ?? 'project'
@@ -109,6 +116,40 @@ export function runTurn(
     response = rememberedLastEcho
       ? `Last echo was: ${rememberedLastEcho}`
       : 'No echo memory yet.'
+  }
+
+  if (
+    !echoPayload
+    && normalizedInput.toLowerCase() !== 'recall last echo'
+    && permissionDecision.allowed
+    && options.llmResponder
+  ) {
+    repository.save(
+      createEvent(sessionId, turnId, 'llm_called', {
+        input: normalizedInput,
+      }),
+    )
+    try {
+      const llmResponse = await options.llmResponder({
+        input: normalizedInput,
+        sessionId,
+        turnId,
+        rememberedLastEcho,
+        context,
+      })
+      response = llmResponse.trim() || response
+      repository.save(
+        createEvent(sessionId, turnId, 'llm_result_received', {
+          outputPreview: response.slice(0, 120),
+        }),
+      )
+    } catch (err) {
+      repository.save(
+        createEvent(sessionId, turnId, 'llm_error', {
+          error: String(err),
+        }),
+      )
+    }
   }
 
   if (echoPayload && permissionDecision.allowed) {

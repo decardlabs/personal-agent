@@ -74,6 +74,20 @@ node dist/index.js --approve-risky
 - With input args: runs one turn and exits.
 - Type `exit` or `quit` to leave interactive mode.
 
+### LLM integration (optional)
+
+- Set `OPENAI_API_KEY` to enable model responses for non-tool prompts.
+- Optional: set `OPENAI_MODEL` (default: `gpt-4o-mini`).
+- If `OPENAI_API_KEY` is not set, assistant falls back to the local MVP response path.
+
+Example:
+
+```bash
+export OPENAI_API_KEY="your_api_key"
+export OPENAI_MODEL="gpt-4o-mini"
+npm run dev
+```
+
 ### Project structure
 
 ```

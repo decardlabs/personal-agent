@@ -10,10 +10,13 @@ The format is based on Keep a Changelog and Semantic Versioning.
 
 - Interactive CLI mode in `src/index.ts` when no input args are provided.
 - `exit` and `quit` commands for leaving interactive mode.
+- Optional OpenAI responder integration for non-tool prompts via `OPENAI_API_KEY`.
+- `src/llm/openaiResponder.ts` for Chat Completions API calls.
 
 ### Changed
 
 - CLI startup behavior: with input args it runs one-shot; without args it enters REPL.
+- `runTurn` is now async and can call an injected `llmResponder` before fallback.
 
 ### Fixed
 

@@ -19,7 +19,7 @@ export type ReplayCaseResult = {
   stepResults: ReplayStepResult[]
 }
 
-export function runReplayCase(testCase: ReplayCase): ReplayCaseResult {
+export async function runReplayCase(testCase: ReplayCase): Promise<ReplayCaseResult> {
   const db = initializeDatabase(':memory:')
   applyMigrations(db)
 
@@ -31,7 +31,7 @@ export function runReplayCase(testCase: ReplayCase): ReplayCaseResult {
   const stepResults: ReplayStepResult[] = []
 
   for (const step of testCase.steps) {
-    const turn = runTurn(
+    const turn = await runTurn(
       step.input,
       eventRepository,
       memory,

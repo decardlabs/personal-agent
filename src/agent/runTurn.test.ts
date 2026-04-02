@@ -10,7 +10,7 @@ import { createMemoryCoordinator } from '../memory/memoryCoordinator.js'
 import { ToolPermissionRepository } from '../storage/toolPermissionRepository.js'
 
 describe('runTurn', () => {
-  it('runs echo flow and persists events in order', () => {
+  it('runs echo flow and persists events in order', async () => {
     const db = initializeDatabase(':memory:')
     applyMigrations(db)
     const repository = new SessionEventRepository(db)
@@ -20,7 +20,7 @@ describe('runTurn', () => {
     )
     const permissionRepository = new ToolPermissionRepository(db)
 
-    const result = runTurn(
+    const result = await runTurn(
       'echo hello',
       repository,
       memory,
@@ -40,7 +40,7 @@ describe('runTurn', () => {
     expect(getCurrentState()).toBe('done')
   })
 
-  it('returns fallback response when no tool command is detected', () => {
+  it('returns fallback response when no tool command is detected', async () => {
     const db = initializeDatabase(':memory:')
     applyMigrations(db)
     const repository = new SessionEventRepository(db)
@@ -50,7 +50,7 @@ describe('runTurn', () => {
     )
     const permissionRepository = new ToolPermissionRepository(db)
 
-    const result = runTurn(
+    const result = await runTurn(
       'what can you do',
       repository,
       memory,
@@ -67,7 +67,7 @@ describe('runTurn', () => {
     ])
   })
 
-  it('recalls persistent memory across turns', () => {
+  it('recalls persistent memory across turns', async () => {
     const db = initializeDatabase(':memory:')
     applyMigrations(db)
     const repository = new SessionEventRepository(db)
@@ -77,14 +77,14 @@ describe('runTurn', () => {
     )
     const permissionRepository = new ToolPermissionRepository(db)
 
-    runTurn(
+    await runTurn(
       'echo durable-memory',
       repository,
       memory,
       permissionRepository,
       'session-3',
     )
-    const recall = runTurn(
+    const recall = await runTurn(
       'recall last echo',
       repository,
       memory,
@@ -95,7 +95,7 @@ describe('runTurn', () => {
     expect(recall.response).toBe('Last echo was: durable-memory')
   })
 
-  it('blocks risky input without explicit approval', () => {
+  it('blocks risky input without explicit approval', async () => {
     const db = initializeDatabase(':memory:')
     applyMigrations(db)
     const repository = new SessionEventRepository(db)
@@ -105,7 +105,7 @@ describe('runTurn', () => {
     )
     const permissionRepository = new ToolPermissionRepository(db)
 
-    const result = runTurn(
+    const result = await runTurn(
       'echo hi && sudo ls',
       repository,
       memory,
@@ -123,7 +123,7 @@ describe('runTurn', () => {
     ])
   })
 
-  it('grants and reuses permission for risky input', () => {
+  it('grants and reuses permission for risky input', async () => {
     const db = initializeDatabase(':memory:')
     applyMigrations(db)
     const repository = new SessionEventRepository(db)
@@ -133,7 +133,7 @@ describe('runTurn', () => {
     )
     const permissionRepository = new ToolPermissionRepository(db)
 
-    const first = runTurn(
+    const first = await runTurn(
       'echo hi && sudo ls',
       repository,
       memory,
@@ -142,7 +142,7 @@ describe('runTurn', () => {
       { approveRisky: true },
     )
 
-    const second = runTurn(
+    const second = await runTurn(
       'echo hi && sudo ls',
       repository,
       memory,
@@ -160,7 +160,7 @@ describe('runTurn', () => {
     expect(secondEvents.some(event => event.eventType === 'permission_required')).toBe(false)
   })
 
-  it('cancels turn when turnTimeoutMs is 0', () => {
+  it('cancels turn when turnTimeoutMs is 0', async () => {
     const db = initializeDatabase(':memory:')
     applyMigrations(db)
     const repository = new SessionEventRepository(db)
@@ -170,7 +170,7 @@ describe('runTurn', () => {
     )
     const permissionRepository = new ToolPermissionRepository(db)
 
-    const result = runTurn(
+    const result = await runTurn(
       'echo timeout-test',
       repository,
       memory,
@@ -186,7 +186,7 @@ describe('runTurn', () => {
     expect(events.some(e => e.eventType === 'tool_called')).toBe(false)
   })
 
-  it('retries tool on transient error and succeeds', () => {
+  it('retries tool on transient error and succeeds', async () => {
     const db = initializeDatabase(':memory:')
     applyMigrations(db)
     const repository = new SessionEventRepository(db)
@@ -203,7 +203,7 @@ describe('runTurn', () => {
       return { output: args.content }
     }
 
-    const result = runTurn(
+    const result = await runTurn(
       'echo retry-me',
       repository,
       memory,
@@ -218,7 +218,7 @@ describe('runTurn', () => {
     expect(events.some(e => e.eventType === 'tool_result_received')).toBe(true)
   })
 
-  it('returns graceful error response when all retries exhausted', () => {
+  it('returns graceful error response when all retries exhausted', async () => {
     const db = initializeDatabase(':memory:')
     applyMigrations(db)
     const repository = new SessionEventRepository(db)
@@ -230,7 +230,7 @@ describe('runTurn', () => {
 
     const alwaysThrows = () => { throw new Error('permanent failure') }
 
-    const result = runTurn(
+    const result = await runTurn(
       'echo fail-me',
       repository,
       memory,
@@ -243,5 +243,32 @@ describe('runTurn', () => {
     expect(result.response).toBe('Tool execution failed. Please try again.')
     expect(events.some(e => e.eventType === 'tool_error')).toBe(true)
     expect(events.some(e => e.eventType === 'turn_completed')).toBe(true)
+  })
+
+  it('uses llm responder when no tool command is detected', async () => {
+    const db = initializeDatabase(':memory:')
+    applyMigrations(db)
+    const repository = new SessionEventRepository(db)
+    const memoryRepository = new MemoryFactRepository(db)
+    const memory = createMemoryCoordinator(
+      new PersistentMemoryStore(memoryRepository),
+    )
+    const permissionRepository = new ToolPermissionRepository(db)
+
+    const result = await runTurn(
+      'what is the project status',
+      repository,
+      memory,
+      permissionRepository,
+      'session-llm',
+      {
+        llmResponder: async args => `LLM says: ${args.input}`,
+      },
+    )
+    const events = repository.listByTurn(result.sessionId, result.turnId)
+
+    expect(result.response).toBe('LLM says: what is the project status')
+    expect(events.some(e => e.eventType === 'llm_called')).toBe(true)
+    expect(events.some(e => e.eventType === 'llm_result_received')).toBe(true)
   })
 })

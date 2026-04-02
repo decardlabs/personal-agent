@@ -11,6 +11,8 @@ import { MemoryFactRepository } from './storage/memoryFactRepository.js'
 import { PersistentMemoryStore } from './memory/persistentMemory.js'
 import { createMemoryCoordinator } from './memory/memoryCoordinator.js'
 import { ToolPermissionRepository } from './storage/toolPermissionRepository.js'
+import { createOpenAIResponder } from './llm/openaiResponder.js'
+import type { TurnOptions } from './agent/runTurn.js'
 
 function parseInputArgs(argv: string[]): { input: string; hasInput: boolean } {
   const filtered = argv.filter(arg => arg !== '--approve-risky')
@@ -41,11 +43,36 @@ async function main(): Promise<void> {
 
   const approveRisky = process.argv.includes('--approve-risky')
   const { input: parsedInput, hasInput } = parseInputArgs(process.argv.slice(2))
+  const llmApiKey = process.env.OPENAI_API_KEY
+  const llmModel = process.env.OPENAI_MODEL
+  const openaiResponder = llmApiKey
+    ? createOpenAIResponder(
+        llmModel
+          ? { apiKey: llmApiKey, model: llmModel }
+          : { apiKey: llmApiKey },
+      )
+    : undefined
+
+  const buildTurnOptions = (): TurnOptions => {
+    const base: TurnOptions = { approveRisky }
+    if (openaiResponder) {
+      return {
+        ...base,
+        llmResponder: async args => openaiResponder(args.input),
+      }
+    }
+    return base
+  }
 
   if (hasInput) {
-    const result = runTurn(parsedInput, repository, memory, permissionRepository, undefined, {
-      approveRisky,
-    })
+    const result = await runTurn(
+      parsedInput,
+      repository,
+      memory,
+      permissionRepository,
+      undefined,
+      buildTurnOptions(),
+    )
     const events = repository.listByTurn(result.sessionId, result.turnId)
     logger.info(
       {
@@ -77,9 +104,14 @@ async function main(): Promise<void> {
       break
     }
 
-    const result = runTurn(line, repository, memory, permissionRepository, sessionId, {
-      approveRisky,
-    })
+    const result = await runTurn(
+      line,
+      repository,
+      memory,
+      permissionRepository,
+      sessionId,
+      buildTurnOptions(),
+    )
     const events = repository.listByTurn(result.sessionId, result.turnId)
     logger.info(
       {
