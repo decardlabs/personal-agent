@@ -78,6 +78,7 @@ node dist/index.js --approve-risky
 
 - Set `OPENAI_API_KEY` to enable model responses for non-tool prompts.
 - Optional: set `OPENAI_MODEL` (default: `gpt-4o-mini`).
+- Optional: set `OPENAI_BASE_URL` to use a compatible gateway endpoint.
 - If `OPENAI_API_KEY` is not set, assistant falls back to the local MVP response path.
 
 Example:
@@ -85,6 +86,7 @@ Example:
 ```bash
 export OPENAI_API_KEY="your_api_key"
 export OPENAI_MODEL="gpt-4o-mini"
+export OPENAI_BASE_URL="https://api.openai.com/v1"
 npm run dev
 ```
 

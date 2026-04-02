@@ -45,11 +45,16 @@ async function main(): Promise<void> {
   const { input: parsedInput, hasInput } = parseInputArgs(process.argv.slice(2))
   const llmApiKey = process.env.OPENAI_API_KEY
   const llmModel = process.env.OPENAI_MODEL
+  const llmBaseUrl = process.env.OPENAI_BASE_URL
   const openaiResponder = llmApiKey
     ? createOpenAIResponder(
-        llmModel
-          ? { apiKey: llmApiKey, model: llmModel }
-          : { apiKey: llmApiKey },
+        llmModel && llmBaseUrl
+          ? { apiKey: llmApiKey, model: llmModel, baseUrl: llmBaseUrl }
+          : llmModel
+            ? { apiKey: llmApiKey, model: llmModel }
+            : llmBaseUrl
+              ? { apiKey: llmApiKey, baseUrl: llmBaseUrl }
+              : { apiKey: llmApiKey },
       )
     : undefined
 
