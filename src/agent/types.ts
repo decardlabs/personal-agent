@@ -1,0 +1,16 @@
+export type AssistantRole = 'system' | 'user' | 'assistant' | 'tool'
+
+export type TurnEventType =
+  | 'input_normalized'
+  | 'reasoning_started'
+  | 'tool_called'
+  | 'tool_result_received'
+  | 'turn_completed'
+
+export type TurnEvent = {
+  sessionId: string
+  turnId: string
+  eventType: TurnEventType
+  payload: Record<string, unknown>
+  createdAt: string
+}
