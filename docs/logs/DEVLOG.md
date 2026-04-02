@@ -34,3 +34,18 @@
 
 - Dependency installation was attempted but stalled in the current environment, so build and test scripts could not be executed yet.
 - Source files were created and static error scan was run.
+
+### Week 2 MVP Loop Update
+
+- Implemented input normalization module and simple echo tool detection.
+- Implemented turn runner pipeline for input normalization, reasoning start, tool call, tool result, and turn completion events.
+- Added event query support in session event repository.
+- Refactored migration module to expose reusable helper without import side effects.
+- Updated application entrypoint to execute one runnable turn and persist event history.
+
+### Week 2 Validation
+
+- Dependency installation completed successfully.
+- Migration command passed.
+- Build command passed.
+- Test suite passed (3 tests total).

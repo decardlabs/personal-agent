@@ -18,14 +18,16 @@ Establish project governance, records, and release baseline.
 - Versioning policy and release process added
 - Initial ADR recorded
 - Week 1 code scaffolding started with TS strict config and SQLite migration baseline
+- Week 2 closed-loop MVP implemented with runnable turn pipeline and event persistence
+- Migrate, build, and tests executed successfully
 
 ### Carry Over
 
-- Code skeleton and first runnable MVP loop
-- Dependency install, build, and test execution once environment allows package installation
+- Expand from echo-only flow to pluggable tool routing
+- Add integration tests for permission checkpoint and fallback response behavior
 
 ### Metrics
 
-- Planned items: 3
-- Completed items: 3
+- Planned items: 5
+- Completed items: 5
 - Completion rate: 100%

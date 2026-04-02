@@ -1,6 +1,14 @@
 import type Database from 'better-sqlite3'
 import type { TurnEvent } from '../agent/types.js'
 
+type SessionEventRow = {
+  session_id: string
+  turn_id: string
+  event_type: TurnEvent['eventType']
+  payload_json: string
+  created_at: string
+}
+
 export class SessionEventRepository {
   constructor(private readonly db: Database.Database) {}
 
@@ -17,5 +25,24 @@ export class SessionEventRepository {
         JSON.stringify(event.payload),
         event.createdAt,
       )
+  }
+
+  listByTurn(sessionId: string, turnId: string): TurnEvent[] {
+    const rows = this.db
+      .prepare(
+        `SELECT session_id, turn_id, event_type, payload_json, created_at
+         FROM session_events
+         WHERE session_id = ? AND turn_id = ?
+         ORDER BY id ASC`,
+      )
+      .all(sessionId, turnId) as SessionEventRow[]
+
+    return rows.map(row => ({
+      sessionId: row.session_id,
+      turnId: row.turn_id,
+      eventType: row.event_type,
+      payload: JSON.parse(row.payload_json) as Record<string, unknown>,
+      createdAt: row.created_at,
+    }))
   }
 }

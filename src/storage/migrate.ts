@@ -1,12 +1,12 @@
 import { readFileSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import type Database from 'better-sqlite3'
 import { createLogger } from '../observability/logger.js'
 import { initializeDatabase } from './db.js'
 
 const logger = createLogger()
 
-function runMigrations(): void {
-  const db = initializeDatabase()
+function ensureMigrationTable(db: Database.Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -14,8 +14,14 @@ function runMigrations(): void {
       executed_at TEXT NOT NULL
     )
   `)
+}
 
-  const migrationDir = resolve(process.cwd(), 'src', 'storage', 'migrations')
+export function applyMigrations(
+  db: Database.Database,
+  migrationDir = resolve(process.cwd(), 'src', 'storage', 'migrations'),
+): number {
+  ensureMigrationTable(db)
+
   const files = readdirSync(migrationDir)
     .filter(file => file.endsWith('.sql'))
     .sort((a, b) => a.localeCompare(b))
@@ -44,6 +50,22 @@ function runMigrations(): void {
   }
 
   logger.info({ count: files.length }, 'migration process complete')
+  return files.length
 }
 
-runMigrations()
+export function runMigrations(): void {
+  const db = initializeDatabase()
+  applyMigrations(db)
+}
+
+const isExecutedAsScript = (() => {
+  const entry = process.argv[1]
+  if (!entry) {
+    return false
+  }
+  return entry.endsWith('src/storage/migrate.ts')
+})()
+
+if (isExecutedAsScript) {
+  runMigrations()
+}
