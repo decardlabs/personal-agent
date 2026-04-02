@@ -77,3 +77,34 @@ src/
 	testing/       — replay test cases and runner
 	observability/ — structured logger
 ```
+
+## Testing Workflow
+
+### Daily development (fast path)
+
+```bash
+# Run unit/integration tests
+npm test
+
+# Run replay regression only
+npm run test:replay
+
+# Pre-merge quick check
+npm run build && npm test
+```
+
+### Pre-release validation (full gate)
+
+```bash
+# Ensure dependencies are current
+npm install --no-audit --no-fund
+
+# Ensure schema is up to date
+npm run migrate
+
+# Full verification
+npm run build && npm test && npm run test:replay
+
+# Confirm release version
+cat VERSION
+```
