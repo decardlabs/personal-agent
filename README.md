@@ -46,8 +46,11 @@ npm install
 # Run database migrations
 npm run migrate
 
-# Start the assistant (one turn)
+# Start the assistant in interactive mode (REPL)
 npm run dev
+
+# Start the assistant for one turn (one-shot)
+npm run dev -- "echo hello"
 
 # Build for production
 npm run build
@@ -64,6 +67,12 @@ npm run test:replay
 ```bash
 node dist/index.js --approve-risky
 ```
+
+### Interaction mode notes
+
+- No input args: starts interactive mode, prompt with `> `, and keeps the same session memory.
+- With input args: runs one turn and exits.
+- Type `exit` or `quit` to leave interactive mode.
 
 ### Project structure
 

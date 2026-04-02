@@ -1,3 +1,6 @@
+import { randomUUID } from 'node:crypto'
+import { createInterface } from 'node:readline/promises'
+import { stdin as input, stdout as output } from 'node:process'
 import { createLogger } from './observability/logger.js'
 import { initializeDatabase } from './storage/db.js'
 import { getCurrentState } from './agent/stateMachine.js'
@@ -8,6 +11,15 @@ import { MemoryFactRepository } from './storage/memoryFactRepository.js'
 import { PersistentMemoryStore } from './memory/persistentMemory.js'
 import { createMemoryCoordinator } from './memory/memoryCoordinator.js'
 import { ToolPermissionRepository } from './storage/toolPermissionRepository.js'
+
+function parseInputArgs(argv: string[]): { input: string; hasInput: boolean } {
+  const filtered = argv.filter(arg => arg !== '--approve-risky')
+  const parsedInput = filtered.join(' ').trim()
+  return {
+    input: parsedInput || 'echo hello world',
+    hasInput: parsedInput.length > 0,
+  }
+}
 
 async function main(): Promise<void> {
   const logger = createLogger()
@@ -28,25 +40,60 @@ async function main(): Promise<void> {
   logger.info({ tableCount: row.count }, 'database connected')
 
   const approveRisky = process.argv.includes('--approve-risky')
-  const input = process.argv
-    .slice(2)
-    .filter(arg => arg !== '--approve-risky')
-    .join(' ') || 'echo hello world'
-  const result = runTurn(input, repository, memory, permissionRepository, undefined, {
-    approveRisky,
-  })
-  const events = repository.listByTurn(result.sessionId, result.turnId)
+  const { input: parsedInput, hasInput } = parseInputArgs(process.argv.slice(2))
 
+  if (hasInput) {
+    const result = runTurn(parsedInput, repository, memory, permissionRepository, undefined, {
+      approveRisky,
+    })
+    const events = repository.listByTurn(result.sessionId, result.turnId)
+    logger.info(
+      {
+        sessionId: result.sessionId,
+        turnId: result.turnId,
+        response: result.response,
+        eventCount: events.length,
+        state: getCurrentState(),
+      },
+      'turn executed',
+    )
+    return
+  }
+
+  const sessionId = randomUUID()
+  const rl = createInterface({ input, output })
   logger.info(
-    {
-      sessionId: result.sessionId,
-      turnId: result.turnId,
-      response: result.response,
-      eventCount: events.length,
-      state: getCurrentState(),
-    },
-    'turn executed',
+    { sessionId },
+    'interactive mode started (type "exit" or "quit" to leave)',
   )
+
+  while (true) {
+    const line = (await rl.question('> ')).trim()
+    if (!line) {
+      continue
+    }
+    if (line.toLowerCase() === 'exit' || line.toLowerCase() === 'quit') {
+      logger.info({ sessionId }, 'interactive mode stopped')
+      break
+    }
+
+    const result = runTurn(line, repository, memory, permissionRepository, sessionId, {
+      approveRisky,
+    })
+    const events = repository.listByTurn(result.sessionId, result.turnId)
+    logger.info(
+      {
+        sessionId: result.sessionId,
+        turnId: result.turnId,
+        response: result.response,
+        eventCount: events.length,
+        state: getCurrentState(),
+      },
+      'turn executed',
+    )
+  }
+
+  rl.close()
 }
 
 main().catch(error => {

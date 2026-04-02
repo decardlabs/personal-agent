@@ -8,7 +8,12 @@ The format is based on Keep a Changelog and Semantic Versioning.
 
 ### Added
 
+- Interactive CLI mode in `src/index.ts` when no input args are provided.
+- `exit` and `quit` commands for leaving interactive mode.
+
 ### Changed
+
+- CLI startup behavior: with input args it runs one-shot; without args it enters REPL.
 
 ### Fixed
 
