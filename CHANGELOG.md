@@ -20,16 +20,20 @@ The format is based on Keep a Changelog and Semantic Versioning.
 - Added session/context/persistent memory layer implementations and coordinator wiring.
 - Added persistent memory repository over memory_facts table.
 - Added cross-turn recall command support ("recall last echo").
+- Added permission policy module for risky input detection and approval checks.
+- Added tool permission repository with persistent grant storage and reuse.
 
 ### Changed
 
 - Migration module now supports reusable apply function without import side effects.
 - Turn pipeline now stores and retrieves memory during reasoning and feedback stages.
+- Turn pipeline now enforces permission checkpoints and emits approval-related events.
 
 ### Fixed
 
 - Resolved startup and migration validation blockers by completing dependency installation and command verification.
 - Fixed missing cross-turn memory behavior by integrating persistent memory read/write flow.
+- Fixed unsafe execution path by requiring explicit approval for risky input patterns.
 
 ## [0.1.0] - 2026-04-02
 

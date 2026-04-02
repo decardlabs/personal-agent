@@ -63,3 +63,17 @@
 - Migration command passed.
 - Build command passed.
 - Test suite passed (4 tests total).
+
+### Week 4 Permission Update
+
+- Added permission policy module with risky input detection.
+- Added tool permission repository backed by tool_permissions table.
+- Integrated permission checkpoint into turn pipeline with required and granted events.
+- Added runtime flag support for explicit risky approval in CLI entrypoint.
+- Implemented permission reuse for previously approved risky inputs.
+
+### Week 4 Validation
+
+- Migration command passed.
+- Build command passed.
+- Test suite passed (6 tests total).

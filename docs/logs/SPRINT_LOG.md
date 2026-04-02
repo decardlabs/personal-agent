@@ -22,15 +22,18 @@ Establish project governance, records, and release baseline.
 - Migrate, build, and tests executed successfully
 - Week 3 memory layers integrated (session, context, persistent)
 - Cross-turn recall behavior implemented and validated
+- Week 4 permission policy and approval checkpoint integrated into turn flow
+- Risky input approval and reuse behaviors validated with tests
 
 ### Carry Over
 
 - Expand from echo-only flow to pluggable tool routing
 - Add integration tests for permission checkpoint and fallback response behavior
 - Introduce permission policy checkpoints into turn runner
+- Add richer permission scopes and expiration support
 
 ### Metrics
 
-- Planned items: 7
-- Completed items: 7
+- Planned items: 9
+- Completed items: 9
 - Completion rate: 100%

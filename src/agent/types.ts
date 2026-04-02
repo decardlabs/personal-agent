@@ -3,6 +3,8 @@ export type AssistantRole = 'system' | 'user' | 'assistant' | 'tool'
 export type TurnEventType =
   | 'input_normalized'
   | 'reasoning_started'
+  | 'permission_required'
+  | 'permission_granted'
   | 'tool_called'
   | 'tool_result_received'
   | 'turn_completed'

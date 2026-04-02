@@ -7,6 +7,7 @@ import { applyMigrations } from './storage/migrate.js'
 import { MemoryFactRepository } from './storage/memoryFactRepository.js'
 import { PersistentMemoryStore } from './memory/persistentMemory.js'
 import { createMemoryCoordinator } from './memory/memoryCoordinator.js'
+import { ToolPermissionRepository } from './storage/toolPermissionRepository.js'
 
 async function main(): Promise<void> {
   const logger = createLogger()
@@ -16,6 +17,7 @@ async function main(): Promise<void> {
   const memoryRepository = new MemoryFactRepository(db)
   const persistentMemory = new PersistentMemoryStore(memoryRepository)
   const memory = createMemoryCoordinator(persistentMemory)
+  const permissionRepository = new ToolPermissionRepository(db)
 
   logger.info({ state: getCurrentState() }, 'personal-assistant bootstrap complete')
 
@@ -25,8 +27,14 @@ async function main(): Promise<void> {
 
   logger.info({ tableCount: row.count }, 'database connected')
 
-  const input = process.argv.slice(2).join(' ') || 'echo hello world'
-  const result = runTurn(input, repository, memory)
+  const approveRisky = process.argv.includes('--approve-risky')
+  const input = process.argv
+    .slice(2)
+    .filter(arg => arg !== '--approve-risky')
+    .join(' ') || 'echo hello world'
+  const result = runTurn(input, repository, memory, permissionRepository, undefined, {
+    approveRisky,
+  })
   const events = repository.listByTurn(result.sessionId, result.turnId)
 
   logger.info(
