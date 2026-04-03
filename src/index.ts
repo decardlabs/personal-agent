@@ -381,6 +381,7 @@ async function main(): Promise<void> {
       return {
         ...base,
         llmResponder: args => responder(args),
+        llmModelConfig: managed,
       }
     }
     return base

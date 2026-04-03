@@ -15,6 +15,7 @@ import {
 } from './inputNormalizer.js'
 import type { MemoryCoordinator } from '../memory/memoryCoordinator.js'
 import type { AutoConsolidationConfig } from '../memory/memoryCoordinator.js'
+import type { ManagedLLMConfig } from '../llm/modelManagement.js'
 import { evaluatePermission } from '../policies/permissionPolicy.js'
 import { ToolPermissionRepository } from '../storage/toolPermissionRepository.js'
 
@@ -32,6 +33,7 @@ export type TurnOptions = {
   echoToolRunner?: (args: { content: string }) => { output: string }
   searchToolRunner?: (args: { query: string }) => { output: string }
   readFileToolRunner?: (args: { filePath: string }) => { output: string }
+  llmModelConfig?: ManagedLLMConfig
   llmResponder?: (args: {
     input: string
     sessionId: string
@@ -210,6 +212,16 @@ export async function runTurn(
     && permissionDecision.allowed
     && options.llmResponder
   ) {
+    if (options.llmModelConfig) {
+      repository.save(
+        createEvent(sessionId, turnId, 'llm_model_resolved', {
+          model: options.llmModelConfig.model,
+          source: options.llmModelConfig.source,
+          fallbackModel: options.llmModelConfig.fallbackModel,
+          decisionLog: options.llmModelConfig.decisionLog,
+        }),
+      )
+    }
     repository.save(
       createEvent(sessionId, turnId, 'llm_called', {
         input: normalizedInput,

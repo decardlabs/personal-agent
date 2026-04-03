@@ -283,6 +283,47 @@ describe('runTurn', () => {
     expect(events.some(e => e.eventType === 'llm_result_received')).toBe(true)
   })
 
+  it('emits llm_model_resolved event with decisionLog when llmModelConfig is provided', async () => {
+    const db = initializeDatabase(':memory:')
+    applyMigrations(db)
+    const repository = new SessionEventRepository(db)
+    const memory = createMemory(db)
+    const permissionRepository = new ToolPermissionRepository(db)
+
+    const result = await runTurn(
+      'tell me about today',
+      repository,
+      memory,
+      permissionRepository,
+      'session-model-resolved',
+      {
+        llmResponder: async args => `LLM: ${args.input}`,
+        llmModelConfig: {
+          model: 'gpt-4o-mini',
+          source: 'preference',
+          fallbackModel: null,
+          decisionLog: ["model: user preference ('gpt-4o-mini')", 'fallback: none'],
+          timeoutMs: 20000,
+          maxRetries: 1,
+          temperature: 0.2,
+          maxOutputTokens: null,
+        },
+      },
+    )
+    const events = repository.listByTurn(result.sessionId, result.turnId)
+    const modelEvent = events.find(e => e.eventType === 'llm_model_resolved')
+
+    expect(modelEvent).toBeDefined()
+    const payload = modelEvent!.payload
+    expect(payload['model']).toBe('gpt-4o-mini')
+    expect(payload['source']).toBe('preference')
+    expect(Array.isArray(payload['decisionLog'])).toBe(true)
+    // llm_model_resolved must appear before llm_called
+    const resolvedIdx = events.findIndex(e => e.eventType === 'llm_model_resolved')
+    const calledIdx = events.findIndex(e => e.eventType === 'llm_called')
+    expect(resolvedIdx).toBeLessThan(calledIdx)
+  })
+
   it('auto-consolidates memory when configured thresholds are met', async () => {
     const db = initializeDatabase(':memory:')
     applyMigrations(db)

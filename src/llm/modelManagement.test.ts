@@ -80,4 +80,32 @@ describe('modelManagement', () => {
     expect(getAllowedModels('gpt-4.1,fast')).toEqual(['gpt-4.1', 'gpt-4o-mini'])
     expect(getAllowedModels(undefined).length).toBeGreaterThan(0)
   })
+
+  it('decisionLog documents preference alias resolution', () => {
+    const cfg = resolveManagedLLMConfig({
+      preferenceModel: 'quality',
+    })
+    expect(cfg.decisionLog[0]).toContain("user preference")
+    expect(cfg.decisionLog[0]).toContain("quality")
+    expect(cfg.decisionLog[0]).toContain("gpt-4.1")
+    expect(cfg.decisionLog[1]).toBe('fallback: none')
+  })
+
+  it('decisionLog documents env model and configured fallback', () => {
+    const cfg = resolveManagedLLMConfig({
+      preferenceModel: null,
+      envModel: 'gpt-4o',
+      envFallbackModel: 'gpt-4o-mini',
+    })
+    expect(cfg.decisionLog[0]).toContain("env variable")
+    expect(cfg.decisionLog[0]).toContain("gpt-4o")
+    expect(cfg.decisionLog[1]).toContain("fallback: 'gpt-4o-mini' configured")
+  })
+
+  it('decisionLog documents default alias when no override is set', () => {
+    const cfg = resolveManagedLLMConfig({ preferenceModel: null })
+    expect(cfg.decisionLog[0]).toContain("default alias")
+    expect(cfg.decisionLog[0]).toContain("balanced")
+    expect(cfg.decisionLog[1]).toBe('fallback: none')
+  })
 })

@@ -10,6 +10,7 @@ export type ManagedLLMConfig = {
   maxRetries: number
   temperature: number
   maxOutputTokens: number | null
+  decisionLog: string[]
 }
 
 export type ModelValidationSuccess = {
@@ -121,11 +122,35 @@ export function resolveManagedLLMConfig(input: {
   const fallback = isValidModelValue(input.envFallbackModel)
     ? normalizeModelName(input.envFallbackModel)
     : null
+  const resolvedFallback = fallback && fallback !== model ? fallback : null
+
+  const decisionLog: string[] = []
+  if (modelFromPreference) {
+    const rawPref = input.preferenceModel!.trim()
+    const wasAlias = rawPref.toLowerCase() in MODEL_ALIAS_MAP
+    decisionLog.push(
+      wasAlias
+        ? `model: user preference (alias '${rawPref}' → '${model}')`
+        : `model: user preference ('${model}')`,
+    )
+  } else if (modelFromEnv) {
+    const rawEnv = input.envModel!.trim()
+    const wasAlias = rawEnv.toLowerCase() in MODEL_ALIAS_MAP
+    decisionLog.push(
+      wasAlias
+        ? `model: env variable (alias '${rawEnv}' → '${model}')`
+        : `model: env variable ('${model}')`,
+    )
+  } else {
+    decisionLog.push(`model: default alias '${DEFAULT_MODEL_ALIAS}' ('${model}')`)
+  }
+  decisionLog.push(resolvedFallback ? `fallback: '${resolvedFallback}' configured` : 'fallback: none')
 
   return {
     model,
     source,
-    fallbackModel: fallback && fallback !== model ? fallback : null,
+    fallbackModel: resolvedFallback,
+    decisionLog,
     timeoutMs: Math.max(1000, parseNumberEnv(input.envTimeoutMs, 20000)),
     maxRetries: Math.max(0, Math.floor(parseNumberEnv(input.envMaxRetries, 1))),
     temperature: Math.min(1, Math.max(0, parseNumberEnv(input.envTemperature, 0.2))),
