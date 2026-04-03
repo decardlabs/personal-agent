@@ -25,30 +25,67 @@ function line(label: string, value: string, width = 72): string {
   return `| ${pad(label, 18)} ${pad(truncate(value, width - 23), width - 23)} |`
 }
 
+function sectionTitle(title: string, width = 72): string {
+  return `| ${pad(`[${title}]`, width - 2)} |`
+}
+
+function separator(width = 72): string {
+  return `| ${'-'.repeat(width - 2)} |`
+}
+
+function renderSection(title: string, rows: Array<{ label: string; value: string }>, width = 72): string[] {
+  return [
+    sectionTitle(title, width),
+    ...rows.map(row => line(row.label, row.value, width)),
+    separator(width),
+  ]
+}
+
 export function renderTerminalDashboard(input: TerminalDashboardInput): string {
   const ui = getUIStatusSummary(input.uiState)
   const flags = [...input.featureFlags]
   const width = 72
   const top = `+${'-'.repeat(width)}+`
 
+  const overview = renderSection('Overview', [
+    { label: 'session', value: input.sessionId ?? '(none)' },
+    { label: 'cwd', value: input.cwd },
+    { label: 'ui mode', value: ui.mode },
+    { label: 'last input', value: ui.lastInput ?? '(none)' },
+  ], width)
+
+  const runtime = renderSection('Runtime', [
+    { label: 'feature flags', value: flags.length > 0 ? flags.join(', ') : '(none)' },
+    { label: 'notifications', value: `${ui.notifications.count} (${ui.notifications.latestLevel ?? 'none'})` },
+    { label: 'latest notice', value: ui.notifications.latestMessage ?? '(none)' },
+    { label: 'last command', value: ui.lastCommand?.commandId ?? ui.lastCommand?.input ?? '(none)' },
+    { label: 'last turn', value: ui.lastTurn?.turnId ?? '(none)' },
+    { label: 'last response', value: ui.lastTurn?.responsePreview ?? '(none)' },
+  ], width)
+
+  const memory = renderSection('Memory', [
+    { label: 'memory action', value: input.diagnostics.recommendedAction },
+    { label: 'history turns', value: String(input.diagnostics.historyTurns) },
+    { label: 'persistent facts', value: String(input.diagnostics.persistentFactCount) },
+    { label: 'stale facts', value: String(input.diagnostics.staleFactCount) },
+    { label: 'low-conf facts', value: String(input.diagnostics.lowConfidenceFactCount) },
+    { label: 'avg confidence', value: input.diagnostics.averageFactConfidence.toFixed(2) },
+  ], width)
+
+  const llm = renderSection('LLM', [
+    { label: 'status', value: input.llmConfigSnapshot ? 'enabled' : 'disabled' },
+    { label: 'model', value: input.llmConfigSnapshot ? `${input.llmConfigSnapshot.model} via ${input.llmConfigSnapshot.source}` : '(none)' },
+    { label: 'fallback', value: input.llmConfigSnapshot?.fallbackModel ?? '(none)' },
+  ], width)
+
   const lines = [
     top,
     line('Dashboard', 'Personal Assistant TUI MVP', width),
     top,
-    line('session', input.sessionId ?? '(none)', width),
-    line('cwd', input.cwd, width),
-    line('ui mode', ui.mode, width),
-    line('last input', ui.lastInput ?? '(none)', width),
-    line('feature flags', flags.length > 0 ? flags.join(', ') : '(none)', width),
-    line('notifications', `${ui.notifications.count} (${ui.notifications.latestLevel ?? 'none'})`, width),
-    line('latest notice', ui.notifications.latestMessage ?? '(none)', width),
-    line('last command', ui.lastCommand?.commandId ?? ui.lastCommand?.input ?? '(none)', width),
-    line('last turn', ui.lastTurn?.turnId ?? '(none)', width),
-    line('last response', ui.lastTurn?.responsePreview ?? '(none)', width),
-    line('memory action', input.diagnostics.recommendedAction, width),
-    line('history turns', String(input.diagnostics.historyTurns), width),
-    line('persistent facts', String(input.diagnostics.persistentFactCount), width),
-    line('llm', input.llmConfigSnapshot ? `${input.llmConfigSnapshot.model} via ${input.llmConfigSnapshot.source}` : 'disabled', width),
+    ...overview,
+    ...runtime,
+    ...memory,
+    ...llm,
     top,
   ]
 
