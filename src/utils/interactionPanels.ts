@@ -2,6 +2,7 @@ import type { TurnEvent } from '../agent/types.js'
 import type { FeatureFlag } from '../featureFlags.js'
 import type { MemoryDiagnostics } from '../memory/memoryCoordinator.js'
 import type { ManagedLLMConfig } from '../llm/modelManagement.js'
+import type { UIStateSnapshot } from '../ui/state.js'
 
 export type StatusPanelInput = {
   sessionId: string
@@ -10,6 +11,15 @@ export type StatusPanelInput = {
   featureFlags: ReadonlySet<FeatureFlag>
   diagnostics: MemoryDiagnostics
   llmConfigSnapshot: ManagedLLMConfig | null
+  uiState: UIStateSnapshot
+  latestTurnSummary: {
+    turnId: string
+    eventCount: number
+    outcome: 'completed' | 'cancelled' | 'incomplete'
+    toolName: string | null
+    usedLLM: boolean
+    responsePreview: string | null
+  } | null
 }
 
 export type TurnExplanation = {
@@ -41,6 +51,9 @@ export type TurnExplanation = {
     called: boolean
     toolName: string | null
     outcome: 'not_used' | 'success' | 'error' | 'timeout'
+    requestSummary: string | null
+    outputPreview: string | null
+    retryCount: number
   }
   result: {
     status: 'completed' | 'cancelled' | 'incomplete'
@@ -66,15 +79,65 @@ function asNumber(value: unknown, fallback = 0): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback
 }
 
+function summarizeToolRequest(payload: Record<string, unknown>): string | null {
+  const content = asString(payload.content)
+  const query = asString(payload.query)
+  const filePath = asString(payload.filePath)
+
+  if (content) {
+    return `content=${content}`
+  }
+  if (query) {
+    return `query=${query}`
+  }
+  if (filePath) {
+    return `filePath=${filePath}`
+  }
+  return null
+}
+
+function summarizeOutput(value: unknown): string | null {
+  const raw = asString(value)
+  if (!raw) {
+    return null
+  }
+  return raw.length <= 120 ? raw : `${raw.slice(0, 117)}...`
+}
+
+export function buildLatestTurnSummary(turnEvents: TurnEvent[]): StatusPanelInput['latestTurnSummary'] {
+  const explanation = buildTurnExplanation(turnEvents)
+  if (!explanation) {
+    return null
+  }
+
+  return {
+    turnId: explanation.turnId,
+    eventCount: turnEvents.length,
+    outcome: explanation.result.status,
+    toolName: explanation.tool.toolName,
+    usedLLM: explanation.model.used,
+    responsePreview: explanation.result.response ?? explanation.result.outputPreview,
+  }
+}
+
 export function formatStatusPanel(input: StatusPanelInput): string {
   const featureFlags = [...input.featureFlags]
   const lines = [
     'Status',
     `- session id: ${input.sessionId}`,
     `- cwd: ${input.cwd}`,
+    `- ui mode: ${input.uiState.mode}`,
     `- permission mode: ${input.approveRisky ? 'auto-approve risky enabled' : 'explicit approval required'}`,
     `- feature flags: ${featureFlags.length > 0 ? featureFlags.join(', ') : '(none)'}`,
   ]
+
+  lines.push(`- last input: ${input.uiState.lastInput ?? '(none)'}`)
+  lines.push(`- notifications: ${input.uiState.notificationCount}`)
+  lines.push(`- last error: ${input.uiState.lastError ?? '(none)'}`)
+  if (input.uiState.lastCommand) {
+    lines.push(`- last command kind: ${input.uiState.lastCommand.kind}`)
+    lines.push(`- last command id: ${input.uiState.lastCommand.commandId ?? '(none)'}`)
+  }
 
   if (input.llmConfigSnapshot) {
     lines.push(`- llm: enabled (${input.llmConfigSnapshot.model} via ${input.llmConfigSnapshot.source})`)
@@ -88,6 +151,15 @@ export function formatStatusPanel(input: StatusPanelInput): string {
   lines.push(`- persistent facts: ${input.diagnostics.persistentFactCount}`)
   lines.push(`- avg fact confidence: ${input.diagnostics.averageFactConfidence.toFixed(2)}`)
   lines.push(`- memory action: ${input.diagnostics.recommendedAction}`)
+
+  if (input.latestTurnSummary) {
+    lines.push(`- latest turn: ${input.latestTurnSummary.turnId}`)
+    lines.push(`- latest turn events: ${input.latestTurnSummary.eventCount}`)
+    lines.push(`- latest turn outcome: ${input.latestTurnSummary.outcome}`)
+    lines.push(`- latest turn tool: ${input.latestTurnSummary.toolName ?? '(none)'}`)
+    lines.push(`- latest turn llm: ${input.latestTurnSummary.usedLLM ? 'used' : 'not used'}`)
+    lines.push(`- latest response: ${input.latestTurnSummary.responsePreview ?? '(none)'}`)
+  }
 
   return lines.join('\n')
 }
@@ -111,6 +183,7 @@ export function buildTurnExplanation(turnEvents: TurnEvent[]): TurnExplanation |
   const toolResultEvent = turnEvents.find(event => event.eventType === 'tool_result_received')
   const toolErrorEvent = turnEvents.find(event => event.eventType === 'tool_error')
   const toolTimeoutEvent = turnEvents.find(event => event.eventType === 'tool_timeout')
+  const toolRetryEvents = turnEvents.filter(event => event.eventType === 'tool_retry')
   const llmResultEvent = turnEvents.find(event => event.eventType === 'llm_result_received')
   const turnCompletedEvent = turnEvents.find(event => event.eventType === 'turn_completed')
   const turnCancelledEvent = turnEvents.find(event => event.eventType === 'turn_cancelled')
@@ -120,6 +193,7 @@ export function buildTurnExplanation(turnEvents: TurnEvent[]): TurnExplanation |
   const permissionPayload = asRecord((permissionRequiredEvent ?? permissionGrantedEvent)?.payload)
   const modelPayload = asRecord(modelEvent?.payload)
   const toolPayload = asRecord(toolCalledEvent?.payload)
+  const toolResultPayload = asRecord(toolResultEvent?.payload)
   const turnCompletedPayload = asRecord(turnCompletedEvent?.payload)
   const llmResultPayload = asRecord(llmResultEvent?.payload)
   const turnCancelledPayload = asRecord(turnCancelledEvent?.payload)
@@ -174,6 +248,9 @@ export function buildTurnExplanation(turnEvents: TurnEvent[]): TurnExplanation |
       called: toolCalledEvent !== undefined,
       toolName: asString(toolPayload.toolName),
       outcome: toolOutcome,
+      requestSummary: summarizeToolRequest(toolPayload),
+      outputPreview: summarizeOutput(toolResultPayload.output),
+      retryCount: toolRetryEvents.length,
     },
     result: {
       status: resultStatus,
@@ -221,6 +298,9 @@ export function formatTurnExplanation(explanation: TurnExplanation): string {
   lines.push(`- called: ${explanation.tool.called ? 'yes' : 'no'}`)
   lines.push(`- tool: ${explanation.tool.toolName ?? '(none)'}`)
   lines.push(`- outcome: ${explanation.tool.outcome}`)
+  lines.push(`- request: ${explanation.tool.requestSummary ?? '(none)'}`)
+  lines.push(`- output preview: ${explanation.tool.outputPreview ?? '(none)'}`)
+  lines.push(`- retries: ${explanation.tool.retryCount}`)
 
   lines.push('')
   lines.push('Result')

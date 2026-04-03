@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { TurnEvent } from '../agent/types.js'
 import {
+  buildLatestTurnSummary,
   buildTurnExplanation,
   formatStatusPanel,
   formatTurnExplanation,
@@ -32,6 +33,21 @@ describe('interactionPanels', () => {
         averageFactConfidence: 0.85,
         recommendedAction: 'review',
       },
+      uiState: {
+        mode: 'awaiting_input',
+        sessionId: 'session-1',
+        lastInput: '/status',
+        lastCommand: {
+          kind: 'utility',
+          input: '/status',
+          commandId: 'status',
+          createdAt: '2026-04-03T00:00:00.000Z',
+        },
+        lastTurn: null,
+        lastError: null,
+        notificationCount: 2,
+        notifications: [],
+      },
       llmConfigSnapshot: {
         model: 'gpt-4o-mini',
         source: 'preference',
@@ -42,13 +58,25 @@ describe('interactionPanels', () => {
         maxOutputTokens: null,
         decisionLog: ['model: user preference'],
       },
+      latestTurnSummary: {
+        turnId: 'turn-1',
+        eventCount: 6,
+        outcome: 'completed',
+        toolName: null,
+        usedLLM: true,
+        responsePreview: 'LLM says: project is healthy',
+      },
     })
 
     expect(output).toContain('Status')
+    expect(output).toContain('ui mode: awaiting_input')
     expect(output).toContain('permission mode: auto-approve risky enabled')
+    expect(output).toContain('last command id: status')
     expect(output).toContain('feature flags: verbose_diag')
     expect(output).toContain('llm: enabled (gpt-4o-mini via preference)')
     expect(output).toContain('memory action: review')
+    expect(output).toContain('latest turn events: 6')
+    expect(output).toContain('latest response: LLM says: project is healthy')
   })
 
   it('builds and formats turn explanation by stages', () => {
@@ -97,5 +125,30 @@ describe('interactionPanels', () => {
     expect(explanation?.permission.status).toBe('required')
     expect(explanation?.permission.reason).toBe('risky_input')
     expect(explanation?.tool.outcome).toBe('not_used')
+  })
+
+  it('captures tool request, output preview, retries, and latest turn summary', () => {
+    const turnEvents = [
+      createEvent('input_normalized', { input: 'search runTurn', normalizedInput: 'search runTurn' }),
+      createEvent('reasoning_started', { historyTurns: 1, persistentFacts: 2, context: { preferences: [] } }),
+      createEvent('tool_called', { toolName: 'search', query: 'runTurn' }),
+      createEvent('tool_retry', { toolName: 'search', attempt: 1, error: 'transient error' }),
+      createEvent('tool_result_received', { toolName: 'search', output: 'src/agent/runTurn.ts:1: runTurn' }),
+      createEvent('turn_completed', { response: 'Search results:\nsrc/agent/runTurn.ts:1: runTurn' }),
+    ]
+
+    const explanation = buildTurnExplanation(turnEvents)
+    expect(explanation?.tool.requestSummary).toBe('query=runTurn')
+    expect(explanation?.tool.outputPreview).toContain('src/agent/runTurn.ts:1: runTurn')
+    expect(explanation?.tool.retryCount).toBe(1)
+
+    const output = formatTurnExplanation(explanation!)
+    expect(output).toContain('request: query=runTurn')
+    expect(output).toContain('retries: 1')
+
+    const summary = buildLatestTurnSummary(turnEvents)
+    expect(summary?.eventCount).toBe(6)
+    expect(summary?.toolName).toBe('search')
+    expect(summary?.usedLLM).toBe(false)
   })
 })

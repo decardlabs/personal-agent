@@ -32,10 +32,12 @@ import {
 } from './utils/commandAssist.js'
 import { findUtilityCommandByInput } from './commands/utilityRegistry.js'
 import {
+  buildLatestTurnSummary,
   buildTurnExplanation,
   formatStatusPanel,
   formatTurnExplanation,
 } from './utils/interactionPanels.js'
+import { createUIStateStore } from './ui/state.js'
 import {
   colorSuccess,
   colorError,
@@ -98,6 +100,7 @@ function executeUtilityCommand(
   repository: SessionEventRepository,
   memory: ReturnType<typeof createMemoryCoordinator>,
   llmConfigSnapshot: ReturnType<typeof resolveManagedLLMConfig> | null,
+  uiState: ReturnType<typeof createUIStateStore>['getState'],
   approveRisky: boolean,
   flags: ReadonlySet<FeatureFlag> = new Set(),
 ): string | null {
@@ -112,6 +115,11 @@ function executeUtilityCommand(
 
     if (utilityCommand.id === 'status') {
       const diagnostics = memory.getDiagnostics(sessionId)
+      const latestCompleted = repository.listBySession(sessionId, 300)
+        .find(event => event.eventType === 'turn_completed')
+      const latestTurnSummary = latestCompleted
+        ? buildLatestTurnSummary(repository.listByTurn(sessionId, latestCompleted.turnId))
+        : null
       return formatStatusPanel({
         sessionId,
         cwd: process.cwd(),
@@ -119,6 +127,8 @@ function executeUtilityCommand(
         featureFlags: flags,
         diagnostics,
         llmConfigSnapshot,
+        uiState: uiState(),
+        latestTurnSummary,
       })
     }
 
@@ -361,6 +371,7 @@ async function main(): Promise<void> {
 
   const approveRisky = process.argv.includes('--approve-risky')
   const { input: parsedInput, hasInput } = parseInputArgs(process.argv.slice(2))
+  const uiState = createUIStateStore({ mode: hasInput ? 'oneshot' : 'interactive' })
   const llmApiKey = process.env.OPENAI_API_KEY
   const llmBaseUrl = process.env.OPENAI_BASE_URL
 
@@ -436,16 +447,25 @@ async function main(): Promise<void> {
   }
 
   if (hasInput) {
-    const utilityOutput = executeUtilityCommand(parsedInput, 'oneshot', repository, memory, buildManagedLLMConfig(), approveRisky, featureFlags)
+    uiState.setSession('oneshot')
+    uiState.recordInput(parsedInput)
+    uiState.setMode('executing_utility')
+    const matchedUtility = findUtilityCommandByInput(parsedInput)
+    const utilityOutput = executeUtilityCommand(parsedInput, 'oneshot', repository, memory, buildManagedLLMConfig(), uiState.getState, approveRisky, featureFlags)
     if (utilityOutput !== null) {
+      uiState.recordUtilityCommand(matchedUtility?.id ?? null, parsedInput, utilityOutput)
+      uiState.setMode('stopped')
       console.log(utilityOutput)
       return
     }
 
     if (maybePrintCommandAssist(parsedInput)) {
+      uiState.pushNotification('warn', `command assist shown for: ${parsedInput}`)
+      uiState.setMode('stopped')
       return
     }
 
+    uiState.setMode('executing_turn')
     const result = await runTurn(
       parsedInput,
       repository,
@@ -458,6 +478,9 @@ async function main(): Promise<void> {
     console.log(formatResponse(result.response))
 
     const events = repository.listByTurn(result.sessionId, result.turnId)
+    uiState.setSession(result.sessionId)
+    uiState.recordTurnResult(parsedInput, result.turnId, result.response, events.length)
+    uiState.setMode('stopped')
     logger.info(
       {
         sessionId: result.sessionId,
@@ -471,6 +494,8 @@ async function main(): Promise<void> {
   }
 
   const sessionId = randomUUID()
+  uiState.setSession(sessionId)
+  uiState.setMode('awaiting_input')
   const rl = createInterface({ input, output })
   logger.info(
     { sessionId },
@@ -484,22 +509,32 @@ async function main(): Promise<void> {
       continue
     }
 
+    uiState.recordInput(line)
+
     const matchedCommand = findUtilityCommandByInput(line)
     if (matchedCommand && (matchedCommand.id === 'exit' || matchedCommand.id === 'quit')) {
+      uiState.recordUtilityCommand(matchedCommand.id, line, 'interactive mode stopped')
+      uiState.setMode('stopped')
       logger.info({ sessionId }, 'interactive mode stopped')
       break
     }
 
-    const utilityOutput = executeUtilityCommand(line, sessionId, repository, memory, buildManagedLLMConfig(), approveRisky, featureFlags)
+    uiState.setMode('executing_utility')
+    const utilityOutput = executeUtilityCommand(line, sessionId, repository, memory, buildManagedLLMConfig(), uiState.getState, approveRisky, featureFlags)
     if (utilityOutput !== null) {
+      uiState.recordUtilityCommand(matchedCommand?.id ?? null, line, utilityOutput)
+      uiState.setMode('awaiting_input')
       console.log(utilityOutput)
       continue
     }
 
     if (maybePrintCommandAssist(line)) {
+      uiState.pushNotification('warn', `command assist shown for: ${line}`)
+      uiState.setMode('awaiting_input')
       continue
     }
 
+    uiState.setMode('executing_turn')
     const result = await runTurn(
       line,
       repository,
@@ -515,6 +550,8 @@ async function main(): Promise<void> {
     console.log(formatResponse(result.response))
 
     const events = repository.listByTurn(result.sessionId, result.turnId)
+    uiState.recordTurnResult(line, result.turnId, result.response, events.length)
+    uiState.setMode('awaiting_input')
     logger.info(
       {
         sessionId: result.sessionId,
