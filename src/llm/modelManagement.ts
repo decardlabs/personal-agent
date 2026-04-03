@@ -12,6 +12,21 @@ export type ManagedLLMConfig = {
   maxOutputTokens: number | null
 }
 
+export type ModelValidationSuccess = {
+  ok: true
+  normalizedModel: string
+  resolvedFromAlias: boolean
+}
+
+export type ModelValidationFailure = {
+  ok: false
+  reason: 'empty' | 'invalid_format' | 'disallowed'
+  message: string
+  suggestions: string[]
+}
+
+export type ModelValidationResult = ModelValidationSuccess | ModelValidationFailure
+
 const MODEL_ALIAS_MAP: Record<ModelAlias, string> = {
   fast: 'gpt-4o-mini',
   balanced: 'gpt-4o-mini',
@@ -19,6 +34,7 @@ const MODEL_ALIAS_MAP: Record<ModelAlias, string> = {
 }
 
 const DEFAULT_MODEL_ALIAS: ModelAlias = 'balanced'
+const DEFAULT_ALLOWED_MODELS = ['gpt-4o-mini', 'gpt-4.1', 'gpt-4o']
 
 function parseNumberEnv(value: string | undefined, defaultValue: number): number {
   if (!value) {
@@ -52,6 +68,24 @@ function normalizeModelName(raw: string): string {
     return MODEL_ALIAS_MAP[lower as ModelAlias]
   }
   return value
+}
+
+function parseAllowedModelList(value: string | undefined): string[] {
+  if (!value) {
+    return [...DEFAULT_ALLOWED_MODELS]
+  }
+
+  const parsed = value
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean)
+    .map(normalizeModelName)
+
+  return parsed.length > 0 ? parsed : [...DEFAULT_ALLOWED_MODELS]
+}
+
+function looksLikeModelName(value: string): boolean {
+  return /^[a-zA-Z0-9][a-zA-Z0-9._:-]{1,80}$/.test(value)
 }
 
 function isValidModelValue(value: string | null | undefined): value is string {
@@ -105,4 +139,49 @@ export function listModelAliasTable(): Array<{ alias: ModelAlias; model: string 
     { alias: 'balanced', model: MODEL_ALIAS_MAP.balanced },
     { alias: 'quality', model: MODEL_ALIAS_MAP.quality },
   ]
+}
+
+export function getAllowedModels(envAllowedModels?: string): string[] {
+  return parseAllowedModelList(envAllowedModels)
+}
+
+export function validateAndNormalizePreferredModel(
+  input: string,
+  options?: { envAllowedModels?: string },
+): ModelValidationResult {
+  const raw = input.trim()
+  if (!raw) {
+    return {
+      ok: false,
+      reason: 'empty',
+      message: 'Model value is empty. Usage: /model set <alias|model-name>',
+      suggestions: ['fast', 'balanced', 'quality'],
+    }
+  }
+
+  if (!looksLikeModelName(raw)) {
+    return {
+      ok: false,
+      reason: 'invalid_format',
+      message: `Invalid model format: '${raw}'. Allowed characters: letters, numbers, '.', '_', ':', '-'.`,
+      suggestions: ['gpt-4o-mini', 'gpt-4.1'],
+    }
+  }
+
+  const normalized = normalizeModelName(raw)
+  const allowedModels = parseAllowedModelList(options?.envAllowedModels)
+  if (!allowedModels.includes(normalized)) {
+    return {
+      ok: false,
+      reason: 'disallowed',
+      message: `Model '${normalized}' is not allowed by OPENAI_ALLOWED_MODELS policy.`,
+      suggestions: allowedModels.slice(0, 5),
+    }
+  }
+
+  return {
+    ok: true,
+    normalizedModel: normalized,
+    resolvedFromAlias: normalized.toLowerCase() !== raw.toLowerCase(),
+  }
 }

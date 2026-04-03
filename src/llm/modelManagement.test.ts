@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { listModelAliasTable, resolveManagedLLMConfig } from './modelManagement.js'
+import {
+  getAllowedModels,
+  listModelAliasTable,
+  resolveManagedLLMConfig,
+  validateAndNormalizePreferredModel,
+} from './modelManagement.js'
 
 describe('modelManagement', () => {
   it('uses preference model with highest priority', () => {
@@ -48,5 +53,31 @@ describe('modelManagement', () => {
     const table = listModelAliasTable()
     expect(table.length).toBe(3)
     expect(table.find(item => item.alias === 'quality')?.model).toBe('gpt-4.1')
+  })
+
+  it('validates and resolves alias model input', () => {
+    const result = validateAndNormalizePreferredModel('quality')
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.normalizedModel).toBe('gpt-4.1')
+      expect(result.resolvedFromAlias).toBe(true)
+    }
+  })
+
+  it('rejects disallowed model with explainable suggestions', () => {
+    const result = validateAndNormalizePreferredModel('gpt-5', {
+      envAllowedModels: 'gpt-4o-mini,gpt-4.1',
+    })
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.reason).toBe('disallowed')
+      expect(result.suggestions).toEqual(['gpt-4o-mini', 'gpt-4.1'])
+    }
+  })
+
+  it('returns allowed models from env policy or defaults', () => {
+    expect(getAllowedModels('gpt-4.1,fast')).toEqual(['gpt-4.1', 'gpt-4o-mini'])
+    expect(getAllowedModels(undefined).length).toBeGreaterThan(0)
   })
 })

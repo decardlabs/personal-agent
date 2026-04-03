@@ -103,7 +103,7 @@ When running in interactive mode, you can use these utility commands:
 - `/diag`: Show memory diagnostics counters.
 - `/diag --json`: Export memory diagnostics as JSON (for CI/gating).
 - `/model`: Show active LLM model policy (source, fallback, retries, aliases).
-- `/model set <value>`: Set preferred model alias or explicit model name.
+- `/model set <value>`: Set preferred model alias or explicit model name (validated against allowlist).
 - `/model clear`: Clear preferred model and return to env/default policy.
 - `/consolidate-memory`: Prune stale low-confidence persistent memory entries.
 - `exit` or `quit`: Leave interactive mode.
@@ -170,6 +170,8 @@ npm run dev
 - Optional: set `OPENAI_MODEL` (default policy alias: `balanced` -> `gpt-4o-mini`).
 - Optional: set `OPENAI_BASE_URL` to use a compatible gateway endpoint.
 - Optional: set `OPENAI_FALLBACK_MODEL` for automatic fallback when primary model is unavailable.
+- Optional: set `OPENAI_ALLOWED_MODELS` as a comma-separated allowlist policy
+	(default: `gpt-4o-mini,gpt-4.1,gpt-4o`).
 - Optional runtime controls:
 	- `OPENAI_TIMEOUT_MS` (default `20000`)
 	- `OPENAI_MAX_RETRIES` (default `1`)

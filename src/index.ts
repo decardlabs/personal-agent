@@ -13,7 +13,12 @@ import { createMemoryCoordinator } from './memory/memoryCoordinator.js'
 import { PreferenceStore } from './memory/preferenceMemory.js'
 import { ToolPermissionRepository } from './storage/toolPermissionRepository.js'
 import { createOpenAIResponder } from './llm/openaiResponder.js'
-import { listModelAliasTable, resolveManagedLLMConfig } from './llm/modelManagement.js'
+import {
+  getAllowedModels,
+  listModelAliasTable,
+  resolveManagedLLMConfig,
+  validateAndNormalizePreferredModel,
+} from './llm/modelManagement.js'
 import type { TurnOptions } from './agent/runTurn.js'
 import { HELP_TEXT, QUICK_HELP } from './utils/help.js'
 import { addToHistory, clearHistory, formatHistory, formatHistoryAll } from './utils/commandHistory.js'
@@ -102,6 +107,7 @@ function executeUtilityCommand(
       `- active model: ${llmConfigSnapshot.model}`,
       `- source: ${llmConfigSnapshot.source}`,
       `- fallback model: ${llmConfigSnapshot.fallbackModel ?? '(none)'}`,
+      `- allowed models policy: ${getAllowedModels(process.env.OPENAI_ALLOWED_MODELS).join(', ')}`,
       `- timeout ms: ${llmConfigSnapshot.timeoutMs}`,
       `- max retries: ${llmConfigSnapshot.maxRetries}`,
       `- temperature: ${llmConfigSnapshot.temperature}`,
@@ -122,8 +128,22 @@ function executeUtilityCommand(
     if (!value) {
       return colorWarn('Usage: /model set <alias|model-name>')
     }
-    memory.preferences.set('llm_model', value)
-    return colorSuccess(`Model preference saved: ${value}`)
+
+    const validation = process.env.OPENAI_ALLOWED_MODELS === undefined
+      ? validateAndNormalizePreferredModel(value)
+      : validateAndNormalizePreferredModel(value, {
+        envAllowedModels: process.env.OPENAI_ALLOWED_MODELS,
+      })
+    if (!validation.ok) {
+      return colorError([
+        `Model preference rejected: ${validation.message}`,
+        `Suggestions: ${validation.suggestions.join(', ') || '(none)'}`,
+      ].join('\n'))
+    }
+
+    memory.preferences.set('llm_model', validation.normalizedModel)
+    const note = validation.resolvedFromAlias ? ` (resolved from alias '${value}')` : ''
+    return colorSuccess(`Model preference saved: ${validation.normalizedModel}${note}`)
   }
 
   if (normalized === '/help') {
