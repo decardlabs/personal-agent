@@ -12,6 +12,7 @@ describe('utilityRegistry', () => {
     expect(findUtilityCommandByInput('/help')?.id).toBe('help')
     expect(findUtilityCommandByInput('/history --all')?.id).toBe('history_all')
     expect(findUtilityCommandByInput('/diag --json')?.id).toBe('diag_json')
+    expect(findUtilityCommandByInput('/dashboard')?.id).toBe('dashboard')
     expect(findUtilityCommandByInput('/clear-history')?.id).toBe('clear_history')
     expect(findUtilityCommandByInput('/memory --detailed')?.id).toBe('memory_detailed')
     expect(findUtilityCommandByInput('/why --json')?.id).toBe('why_json')
@@ -41,6 +42,7 @@ describe('utilityRegistry', () => {
 
     expect(exactTriggers).toContain('/help')
     expect(exactTriggers).toContain('/diag --json')
+    expect(exactTriggers).toContain('/dashboard')
     expect(exactTriggers).toContain('/status')
     expect(exactTriggers).toContain('/memory')
     expect(exactTriggers).toContain('/model')

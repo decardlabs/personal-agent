@@ -146,6 +146,17 @@ function executeUtilityCommand(
       return colorInfo('Exit command is only available in interactive mode.')
     }
 
+    if (utilityCommand.id === 'dashboard') {
+      return renderTerminalDashboard({
+        sessionId,
+        cwd: process.cwd(),
+        featureFlags: flags,
+        diagnostics: memory.getDiagnostics(sessionId),
+        llmConfigSnapshot,
+        uiState: uiState(),
+      })
+    }
+
     if (utilityCommand.id === 'status') {
       const diagnostics = memory.getDiagnostics(sessionId)
       return formatStatusPanel({

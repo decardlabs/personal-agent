@@ -9,6 +9,7 @@ export type UtilityCommandSpec = {
   | 'memory_detailed'
   | 'diag'
   | 'diag_json'
+  | 'dashboard'
   | 'status'
   | 'model'
   | 'model_clear'
@@ -73,6 +74,12 @@ const UTILITY_COMMAND_REGISTRY: UtilityCommandSpec[] = [
     id: 'diag_json',
     trigger: '/diag --json',
     description: 'Output diagnostics in JSON for CI/gating',
+  },
+  {
+    command: '/dashboard',
+    id: 'dashboard',
+    trigger: '/dashboard',
+    description: 'Render the read-only terminal dashboard snapshot',
   },
   {
     command: '/status',
