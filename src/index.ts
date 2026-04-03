@@ -15,7 +15,7 @@ import { ToolPermissionRepository } from './storage/toolPermissionRepository.js'
 import { createOpenAIResponder } from './llm/openaiResponder.js'
 import type { TurnOptions } from './agent/runTurn.js'
 import { HELP_TEXT, QUICK_HELP } from './utils/help.js'
-import { addToHistory, clearHistory, formatHistory } from './utils/commandHistory.js'
+import { addToHistory, clearHistory, formatHistory, formatHistoryAll } from './utils/commandHistory.js'
 import {
   getClosestCommandSuggestion,
   getCompletionSuggestions,
@@ -29,6 +29,25 @@ import {
   colorCommand,
   formatPrompt,
 } from './cli/colorOutput.js'
+
+function parseBooleanEnv(value: string | undefined, defaultValue: boolean): boolean {
+  if (value === undefined) {
+    return defaultValue
+  }
+  const normalized = value.trim().toLowerCase()
+  return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on'
+}
+
+function parseNumberEnv(value: string | undefined, defaultValue: number): number {
+  if (value === undefined) {
+    return defaultValue
+  }
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) {
+    return defaultValue
+  }
+  return parsed
+}
 
 function parseInputArgs(argv: string[]): { input: string; hasInput: boolean } {
   const filtered = argv.filter(arg => arg !== '--approve-risky')
@@ -70,21 +89,35 @@ function executeUtilityCommand(
     return HELP_TEXT
   }
   if (normalized === '/history') {
-    return `${colorCommand('Command History (last 50):')}\n${formatHistory()}`
+    return `${colorCommand('Command History (session-first, deduped):')}\n${formatHistory(sessionId, process.cwd())}`
+  }
+  if (normalized === '/history --all') {
+    return `${colorCommand('Command History (project recent 50):')}\n${formatHistoryAll(process.cwd())}`
   }
   if (normalized === '/clear-history') {
     clearHistory()
     return colorSuccess('Command history cleared.')
   }
-  if (normalized === '/memory') {
+  if (normalized === '/memory' || normalized === '/memory --detailed') {
     const bundle = memory.retrieveForLLM(sessionId)
-    return [
+    const base = [
       colorCommand('Memory Snapshot'),
       `- preferences: ${bundle.preferences.length}`,
       `- history turns: ${bundle.history.length}`,
       `- persistent facts: ${bundle.persistentFacts.length}`,
       `- context cwd: ${bundle.context.cwd}`,
-    ].join('\n')
+    ]
+
+    if (normalized === '/memory --detailed') {
+      const facts = bundle.persistentFacts
+        .slice(0, 5)
+        .map((fact, idx) => `  ${idx + 1}. ${fact.key}=${fact.value} (conf=${fact.confidence.toFixed(2)})`)
+
+      base.push('- top persistent facts:')
+      base.push(facts.length > 0 ? facts.join('\n') : '  (none)')
+    }
+
+    return base.join('\n')
   }
   if (normalized === '/diag') {
     const diagnostics = memory.getDiagnostics(sessionId)
@@ -93,7 +126,23 @@ function executeUtilityCommand(
       `- history turns: ${diagnostics.historyTurns}`,
       `- preference count: ${diagnostics.preferenceCount}`,
       `- persistent fact count: ${diagnostics.persistentFactCount}`,
+      `- stale fact count: ${diagnostics.staleFactCount}`,
+      `- low-confidence fact count: ${diagnostics.lowConfidenceFactCount}`,
+      `- average fact confidence: ${diagnostics.averageFactConfidence.toFixed(2)}`,
+      `- recommended action: ${diagnostics.recommendedAction}`,
     ].join('\n')
+  }
+  if (normalized === '/diag --json') {
+    const diagnostics = memory.getDiagnostics(sessionId)
+    return JSON.stringify(
+      {
+        sessionId,
+        generatedAt: new Date().toISOString(),
+        diagnostics,
+      },
+      null,
+      2,
+    )
   }
   if (normalized === '/why' || normalized === '/why --json') {
     const events = repository.listBySession(sessionId, 300)
@@ -147,6 +196,15 @@ function executeUtilityCommand(
   if (normalized === '/consolidate-memory') {
     const result = memory.persistent.consolidate()
     return colorSuccess(`Memory consolidation complete. Removed ${result.removedCount} stale low-confidence facts.`)
+  }
+  if (normalized === '/consolidate-memory --auto') {
+    const diagnostics = memory.getDiagnostics(sessionId)
+    if (diagnostics.recommendedAction !== 'consolidate') {
+      return colorInfo('Memory is healthy enough. Auto-consolidation skipped.')
+    }
+
+    const result = memory.persistent.consolidate()
+    return colorSuccess(`Auto-consolidation complete. Removed ${result.removedCount} stale low-confidence facts.`)
   }
   return null
 }
@@ -210,7 +268,15 @@ async function main(): Promise<void> {
     : undefined
 
   const buildTurnOptions = (): TurnOptions => {
-    const base: TurnOptions = { approveRisky }
+    const autoConsolidationConfig = {
+      enabled: parseBooleanEnv(process.env.MEMORY_AUTO_CONSOLIDATE_ENABLED, false),
+      minTurns: parseNumberEnv(process.env.MEMORY_AUTO_CONSOLIDATE_MIN_TURNS, 20),
+      minHoursSinceLastConsolidation: parseNumberEnv(process.env.MEMORY_AUTO_CONSOLIDATE_MIN_HOURS, 24),
+      minStaleFacts: parseNumberEnv(process.env.MEMORY_AUTO_CONSOLIDATE_MIN_STALE_FACTS, 3),
+      minLowConfidenceFacts: parseNumberEnv(process.env.MEMORY_AUTO_CONSOLIDATE_MIN_LOW_CONF_FACTS, 5),
+    }
+
+    const base: TurnOptions = { approveRisky, autoConsolidationConfig }
     if (openaiResponder) {
       return {
         ...base,
@@ -294,7 +360,7 @@ async function main(): Promise<void> {
     )
 
     // Save to history
-    addToHistory(line)
+    addToHistory(line, { sessionId, projectCwd: process.cwd() })
 
     console.log(formatResponse(result.response))
 

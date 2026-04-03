@@ -101,6 +101,7 @@ When running in interactive mode, you can use these utility commands:
 - `/clear-history`: Clear the command history file.
 - `/memory`: Show a compact memory snapshot (preferences/history/facts/context).
 - `/diag`: Show memory diagnostics counters.
+- `/diag --json`: Export memory diagnostics as JSON (for CI/gating).
 - `/consolidate-memory`: Prune stale low-confidence persistent memory entries.
 - `exit` or `quit`: Leave interactive mode.
 
@@ -133,8 +134,28 @@ npm run dev
 > /clear-history                     # Clear history
 > /memory                            # Inspect memory snapshot
 > /diag                              # View memory diagnostics
+> /diag --json                       # Export diagnostics in JSON
 > /consolidate-memory                # Run memory pruning
 > exit                               # Leave interactive mode
+```
+
+### Memory auto-consolidation configuration
+
+Auto-consolidation can be enabled and tuned with environment variables:
+
+- `MEMORY_AUTO_CONSOLIDATE_ENABLED`: `true/false` (default `false`)
+- `MEMORY_AUTO_CONSOLIDATE_MIN_TURNS`: minimum turns in current session before auto-consolidation (default `20`)
+- `MEMORY_AUTO_CONSOLIDATE_MIN_HOURS`: minimum hours between two auto-consolidations (default `24`)
+- `MEMORY_AUTO_CONSOLIDATE_MIN_STALE_FACTS`: trigger threshold for stale facts (default `3`)
+- `MEMORY_AUTO_CONSOLIDATE_MIN_LOW_CONF_FACTS`: trigger threshold for low-confidence facts (default `5`)
+
+Example:
+
+```bash
+export MEMORY_AUTO_CONSOLIDATE_ENABLED=true
+export MEMORY_AUTO_CONSOLIDATE_MIN_TURNS=10
+export MEMORY_AUTO_CONSOLIDATE_MIN_HOURS=12
+npm run dev
 ```
 
 ### LLM integration (optional)

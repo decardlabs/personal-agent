@@ -282,4 +282,69 @@ describe('runTurn', () => {
     expect(events.some(e => e.eventType === 'llm_called')).toBe(true)
     expect(events.some(e => e.eventType === 'llm_result_received')).toBe(true)
   })
+
+  it('auto-consolidates memory when configured thresholds are met', async () => {
+    const db = initializeDatabase(':memory:')
+    applyMigrations(db)
+    const repository = new SessionEventRepository(db)
+    const memoryRepository = new MemoryFactRepository(db)
+    const preferenceRepository = new PreferenceRepository(db)
+    const memory = createMemoryCoordinator(
+      new PersistentMemoryStore(memoryRepository),
+      new PreferenceStore(preferenceRepository),
+    )
+    const permissionRepository = new ToolPermissionRepository(db)
+
+    memoryRepository.upsert('persistent', 'old_low', 'to-prune', 0.1, '2000-01-01T00:00:00.000Z')
+
+    const result = await runTurn(
+      'echo trigger-auto-consolidate',
+      repository,
+      memory,
+      permissionRepository,
+      'session-auto-consolidate',
+      {
+        autoConsolidationConfig: {
+          enabled: true,
+          minTurns: 1,
+          minHoursSinceLastConsolidation: 0,
+          minStaleFacts: 1,
+          minLowConfidenceFacts: 1,
+        },
+      },
+    )
+
+    const events = repository.listByTurn(result.sessionId, result.turnId)
+    expect(events.some(e => e.eventType === 'memory_auto_consolidated')).toBe(true)
+    expect(memory.persistent.get('old_low')).toBeNull()
+    expect(memory.persistent.get('__last_consolidated_at')).not.toBeNull()
+  })
+
+  it('skips auto consolidation when thresholds are not met', async () => {
+    const db = initializeDatabase(':memory:')
+    applyMigrations(db)
+    const repository = new SessionEventRepository(db)
+    const memory = createMemory(db)
+    const permissionRepository = new ToolPermissionRepository(db)
+
+    const result = await runTurn(
+      'echo no-auto-consolidate',
+      repository,
+      memory,
+      permissionRepository,
+      'session-auto-skip',
+      {
+        autoConsolidationConfig: {
+          enabled: true,
+          minTurns: 5,
+          minHoursSinceLastConsolidation: 24,
+          minStaleFacts: 2,
+          minLowConfidenceFacts: 2,
+        },
+      },
+    )
+
+    const events = repository.listByTurn(result.sessionId, result.turnId)
+    expect(events.some(e => e.eventType === 'memory_auto_consolidation_skipped')).toBe(true)
+  })
 })

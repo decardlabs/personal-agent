@@ -7,11 +7,15 @@ const CANONICAL_COMMANDS = [
   'recall last echo',
   '/help',
   '/history',
+  '/history --all',
   '/clear-history',
   '/memory',
+  '/memory --detailed',
   '/diag',
+  '/diag --json',
   '/why',
   '/consolidate-memory',
+  '/consolidate-memory --auto',
   'exit',
   'quit',
 ]
@@ -50,12 +54,16 @@ export function isKnownCommandInput(input: string): boolean {
     normalized === 'recall last echo'
     || normalized === '/help'
     || normalized === '/history'
+    || normalized === '/history --all'
     || normalized === '/clear-history'
     || normalized === '/memory'
+    || normalized === '/memory --detailed'
     || normalized === '/diag'
+    || normalized === '/diag --json'
     || normalized === '/why'
     || normalized === '/why --json'
     || normalized === '/consolidate-memory'
+    || normalized === '/consolidate-memory --auto'
     || normalized === 'exit'
     || normalized === 'quit'
   ) {

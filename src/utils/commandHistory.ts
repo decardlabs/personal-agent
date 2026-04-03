@@ -9,6 +9,8 @@ const MAX_HISTORY_SIZE = 500
 export type HistoryEntry = {
   command: string
   timestamp: string
+  sessionId?: string
+  projectCwd?: string
 }
 
 function ensureHistoryDir(): void {
@@ -25,7 +27,18 @@ function readHistory(): HistoryEntry[] {
   try {
     const content = readFileSync(HISTORY_FILE, 'utf-8')
     const parsed = JSON.parse(content) as HistoryEntry[]
-    return Array.isArray(parsed) ? parsed : []
+    if (!Array.isArray(parsed)) {
+      return []
+    }
+
+    return parsed
+      .filter(entry => entry && typeof entry.command === 'string' && typeof entry.timestamp === 'string')
+      .map(entry => ({
+        command: entry.command,
+        timestamp: entry.timestamp,
+        sessionId: typeof entry.sessionId === 'string' ? entry.sessionId : undefined,
+        projectCwd: typeof entry.projectCwd === 'string' ? entry.projectCwd : undefined,
+      }))
   } catch {
     return []
   }
@@ -40,7 +53,7 @@ function writeHistory(entries: HistoryEntry[]): void {
   }
 }
 
-export function addToHistory(command: string): void {
+export function addToHistory(command: string, options?: { sessionId?: string; projectCwd?: string }): void {
   const history = readHistory()
   const trimmed = command.trim()
   if (!trimmed || trimmed.startsWith('/')) {
@@ -50,6 +63,8 @@ export function addToHistory(command: string): void {
   history.push({
     command: trimmed,
     timestamp: new Date().toISOString(),
+    sessionId: options?.sessionId,
+    projectCwd: options?.projectCwd,
   })
   // Keep only last MAX_HISTORY_SIZE entries
   if (history.length > MAX_HISTORY_SIZE) {
@@ -62,6 +77,31 @@ export function getHistory(): HistoryEntry[] {
   return readHistory()
 }
 
+export function getProjectHistory(sessionId: string, projectCwd: string, limit = 50): HistoryEntry[] {
+  const entries = readHistory()
+    .filter(entry => !entry.projectCwd || entry.projectCwd === projectCwd)
+    .reverse()
+
+  const currentSession: HistoryEntry[] = []
+  const otherSessions: HistoryEntry[] = []
+  const seen = new Set<string>()
+
+  for (const entry of entries) {
+    if (seen.has(entry.command)) {
+      continue
+    }
+    seen.add(entry.command)
+
+    if (entry.sessionId === sessionId) {
+      currentSession.push(entry)
+    } else {
+      otherSessions.push(entry)
+    }
+  }
+
+  return [...currentSession, ...otherSessions].slice(0, limit)
+}
+
 export function clearHistory(): void {
   ensureHistoryDir()
   try {
@@ -71,13 +111,26 @@ export function clearHistory(): void {
   }
 }
 
-export function formatHistory(): string {
-  const history = readHistory()
+export function formatHistory(sessionId: string, projectCwd: string): string {
+  const history = getProjectHistory(sessionId, projectCwd, 50)
   if (history.length === 0) {
     return '(no command history yet)'
   }
   return history
-    .slice(-50) // Show last 50
+    .map((entry, idx) => `  ${String(idx + 1).padStart(3)}: ${entry.command}`)
+    .join('\n')
+}
+
+export function formatHistoryAll(projectCwd: string): string {
+  const history = readHistory()
+    .filter(entry => !entry.projectCwd || entry.projectCwd === projectCwd)
+    .slice(-50)
+
+  if (history.length === 0) {
+    return '(no command history yet)'
+  }
+
+  return history
     .map((entry, idx) => `  ${String(idx + 1).padStart(3)}: ${entry.command}`)
     .join('\n')
 }

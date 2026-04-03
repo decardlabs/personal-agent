@@ -17,13 +17,17 @@ export const HELP_TEXT = `
 
 ⚙️  UTILITIES:
   /help                    Show this help message
-  /history                 Show command history (last 50 commands)
+  /history                 Show project history (session-first, deduped)
+  /history --all           Show project history (latest 50, raw order)
   /clear-history           Clear saved command history
   /memory                  Show current memory snapshot summary
+  /memory --detailed       Show summary with top persistent facts
   /diag                    Show runtime memory diagnostics
+  /diag --json             Output diagnostics in JSON for CI/gating
   /why                     Explain memory signals used in the latest turn
   /why --json              Output latest memory-usage explanation in JSON
   /consolidate-memory      Prune stale low-confidence persistent memory
+  /consolidate-memory --auto  Consolidate only when diagnostics suggest it
   exit, quit               Leave interactive mode
 
 🔐 PERMISSION:
@@ -52,11 +56,15 @@ export const COMMAND_LIST = [
   'recall last echo',
   '/help',
   '/history',
+  '/history --all',
   '/clear-history',
   '/memory',
+  '/memory --detailed',
   '/diag',
+  '/diag --json',
   '/why',
   '/consolidate-memory',
+  '/consolidate-memory --auto',
   'exit',
   'quit',
 ]

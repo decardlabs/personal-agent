@@ -56,5 +56,8 @@ describe('MemoryCoordinator', () => {
     expect(diag.preferenceCount).toBe(1)
     expect(diag.persistentFactCount).toBe(1)
     expect(diag.historyTurns).toBe(1)
+    expect(diag.staleFactCount).toBeGreaterThanOrEqual(0)
+    expect(diag.lowConfidenceFactCount).toBeGreaterThanOrEqual(0)
+    expect(['ok', 'review', 'consolidate']).toContain(diag.recommendedAction)
   })
 })

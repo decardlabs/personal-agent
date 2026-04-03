@@ -14,6 +14,7 @@ import {
   normalizeInput,
 } from './inputNormalizer.js'
 import type { MemoryCoordinator } from '../memory/memoryCoordinator.js'
+import type { AutoConsolidationConfig } from '../memory/memoryCoordinator.js'
 import { evaluatePermission } from '../policies/permissionPolicy.js'
 import { ToolPermissionRepository } from '../storage/toolPermissionRepository.js'
 
@@ -40,6 +41,7 @@ export type TurnOptions = {
     history: import('../memory/sessionMemory.js').HistoryEntry[]
     persistentFacts: ReturnType<MemoryCoordinator['retrieveForLLM']>['persistentFacts']
   }) => Promise<string>
+  autoConsolidationConfig?: AutoConsolidationConfig
 }
 
 function createEvent(
@@ -65,6 +67,26 @@ export async function runTurn(
   sessionId = randomUUID(),
   options: TurnOptions = {},
 ): Promise<TurnResult> {
+    const appendHistoryAndMaybeConsolidate = (finalResponse: string): void => {
+      memory.session.pushHistory(sessionId, { input: normalizedInput, response: finalResponse })
+      if (!options.autoConsolidationConfig) {
+        return
+      }
+
+      const consolidation = memory.maybeAutoConsolidate(sessionId, options.autoConsolidationConfig)
+      repository.save(
+        createEvent(
+          sessionId,
+          turnId,
+          consolidation.triggered ? 'memory_auto_consolidated' : 'memory_auto_consolidation_skipped',
+          {
+            reason: consolidation.reason,
+            removedCount: consolidation.removedCount,
+          },
+        ),
+      )
+    }
+
   const turnId = randomUUID()
   const turnStartedAt = Date.now()
   const permissionScope = options.permissionScope ?? 'project'
@@ -161,7 +183,7 @@ export async function runTurn(
       createEvent(sessionId, turnId, 'turn_completed', { response }),
     )
     sm.transitionTo('done')
-    memory.session.pushHistory(sessionId, { input: normalizedInput, response })
+    appendHistoryAndMaybeConsolidate(response)
     return { sessionId, turnId, response }
   }
 
@@ -174,7 +196,7 @@ export async function runTurn(
       createEvent(sessionId, turnId, 'turn_completed', { response }),
     )
     sm.transitionTo('done')
-    memory.session.pushHistory(sessionId, { input: normalizedInput, response })
+    appendHistoryAndMaybeConsolidate(response)
     return { sessionId, turnId, response }
   }
 
@@ -232,7 +254,7 @@ export async function runTurn(
         createEvent(sessionId, turnId, 'turn_cancelled', { reason: 'timeout' }),
       )
       response = 'Turn cancelled: tool execution timed out.'
-      memory.session.pushHistory(sessionId, { input: normalizedInput, response })
+      appendHistoryAndMaybeConsolidate(response)
       return { sessionId, turnId, response }
     }
 
@@ -292,7 +314,7 @@ export async function runTurn(
         createEvent(sessionId, turnId, 'turn_completed', { response: 'Tool execution failed. Please try again.' }),
       )
       response = 'Tool execution failed. Please try again.'
-      memory.session.pushHistory(sessionId, { input: normalizedInput, response })
+      appendHistoryAndMaybeConsolidate(response)
       return { sessionId, turnId, response }
     }
 
@@ -322,7 +344,7 @@ export async function runTurn(
     }),
   )
 
-  memory.session.pushHistory(sessionId, { input: normalizedInput, response })
+  appendHistoryAndMaybeConsolidate(response)
 
   return {
     sessionId,
