@@ -10,6 +10,10 @@ describe('utilityRegistry', () => {
     expect(findUtilityCommandByInput('/help')?.id).toBe('help')
     expect(findUtilityCommandByInput('/history --all')?.id).toBe('history_all')
     expect(findUtilityCommandByInput('/diag --json')?.id).toBe('diag_json')
+    expect(findUtilityCommandByInput('/clear-history')?.id).toBe('clear_history')
+    expect(findUtilityCommandByInput('/memory --detailed')?.id).toBe('memory_detailed')
+    expect(findUtilityCommandByInput('/why --json')?.id).toBe('why_json')
+    expect(findUtilityCommandByInput('/consolidate-memory --auto')?.id).toBe('consolidate_memory_auto')
   })
 
   it('supports case-insensitive and trimmed inputs', () => {
@@ -27,5 +31,8 @@ describe('utilityRegistry', () => {
     expect(triggers).toEqual(registry.map(item => item.trigger))
     expect(triggers).toContain('/help')
     expect(triggers).toContain('/diag --json')
+    expect(triggers).toContain('/memory')
+    expect(triggers).toContain('/why')
+    expect(triggers).toContain('/consolidate-memory')
   })
 })

@@ -165,6 +165,33 @@ function executeUtilityCommand(
       return `${colorCommand('Command History (project recent 50):')}\n${formatHistoryAll(process.cwd())}`
     }
 
+    if (utilityCommand.id === 'clear_history') {
+      clearHistory()
+      return colorSuccess('Command history cleared.')
+    }
+
+    if (utilityCommand.id === 'memory' || utilityCommand.id === 'memory_detailed') {
+      const bundle = memory.retrieveForLLM(sessionId)
+      const base = [
+        colorCommand('Memory Snapshot'),
+        `- preferences: ${bundle.preferences.length}`,
+        `- history turns: ${bundle.history.length}`,
+        `- persistent facts: ${bundle.persistentFacts.length}`,
+        `- context cwd: ${bundle.context.cwd}`,
+      ]
+
+      if (utilityCommand.id === 'memory_detailed') {
+        const facts = bundle.persistentFacts
+          .slice(0, 5)
+          .map((fact, idx) => `  ${idx + 1}. ${fact.key}=${fact.value} (conf=${fact.confidence.toFixed(2)})`)
+
+        base.push('- top persistent facts:')
+        base.push(facts.length > 0 ? facts.join('\n') : '  (none)')
+      }
+
+      return base.join('\n')
+    }
+
     if (utilityCommand.id === 'diag') {
       const diagnostics = memory.getDiagnostics(sessionId)
       const lines = [
@@ -215,94 +242,72 @@ function executeUtilityCommand(
       }
       return JSON.stringify(payload, null, 2)
     }
-  }
 
-  if (normalized === '/clear-history') {
-    clearHistory()
-    return colorSuccess('Command history cleared.')
-  }
-  if (normalized === '/memory' || normalized === '/memory --detailed') {
-    const bundle = memory.retrieveForLLM(sessionId)
-    const base = [
-      colorCommand('Memory Snapshot'),
-      `- preferences: ${bundle.preferences.length}`,
-      `- history turns: ${bundle.history.length}`,
-      `- persistent facts: ${bundle.persistentFacts.length}`,
-      `- context cwd: ${bundle.context.cwd}`,
-    ]
+    if (utilityCommand.id === 'why' || utilityCommand.id === 'why_json') {
+      const events = repository.listBySession(sessionId, 300)
+      const latestCompleted = events.find(event => event.eventType === 'turn_completed')
+      if (!latestCompleted) {
+        return colorInfo('No previous turn in this session. Run one command first, then use /why.')
+      }
 
-    if (normalized === '/memory --detailed') {
-      const facts = bundle.persistentFacts
-        .slice(0, 5)
-        .map((fact, idx) => `  ${idx + 1}. ${fact.key}=${fact.value} (conf=${fact.confidence.toFixed(2)})`)
-
-      base.push('- top persistent facts:')
-      base.push(facts.length > 0 ? facts.join('\n') : '  (none)')
-    }
-
-    return base.join('\n')
-  }
-  if (normalized === '/why' || normalized === '/why --json') {
-    const events = repository.listBySession(sessionId, 300)
-    const latestCompleted = events.find(event => event.eventType === 'turn_completed')
-    if (!latestCompleted) {
-      return colorInfo('No previous turn in this session. Run one command first, then use /why.')
-    }
-
-    const latestTurnId = latestCompleted.turnId
-    const reasoning = events.find(
-      event => event.turnId === latestTurnId && event.eventType === 'reasoning_started',
-    )
-
-    if (!reasoning) {
-      return colorInfo('No reasoning trace found for the latest turn.')
-    }
-
-    const payload = reasoning.payload as Record<string, unknown>
-    const historyTurns = typeof payload.historyTurns === 'number' ? payload.historyTurns : 0
-    const persistentFacts = typeof payload.persistentFacts === 'number' ? payload.persistentFacts : 0
-    const rememberedLastEcho =
-      typeof payload.rememberedLastEcho === 'string' && payload.rememberedLastEcho.length > 0
-        ? payload.rememberedLastEcho
-        : '(none)'
-    const context = payload.context as Record<string, unknown> | undefined
-    const prefCount = Array.isArray(context?.preferences) ? context.preferences.length : 0
-
-    if (normalized === '/why --json') {
-      return JSON.stringify(
-        {
-          turnId: latestTurnId,
-          historyTurnsUsed: historyTurns,
-          preferenceItemsUsed: prefCount,
-          persistentFactsConsidered: persistentFacts,
-          rememberedLastEcho,
-        },
-        null,
-        2,
+      const latestTurnId = latestCompleted.turnId
+      const reasoning = events.find(
+        event => event.turnId === latestTurnId && event.eventType === 'reasoning_started',
       )
+
+      if (!reasoning) {
+        return colorInfo('No reasoning trace found for the latest turn.')
+      }
+
+      const payload = reasoning.payload as Record<string, unknown>
+      const historyTurns = typeof payload.historyTurns === 'number' ? payload.historyTurns : 0
+      const persistentFacts = typeof payload.persistentFacts === 'number' ? payload.persistentFacts : 0
+      const rememberedLastEcho =
+        typeof payload.rememberedLastEcho === 'string' && payload.rememberedLastEcho.length > 0
+          ? payload.rememberedLastEcho
+          : '(none)'
+      const context = payload.context as Record<string, unknown> | undefined
+      const prefCount = Array.isArray(context?.preferences) ? context.preferences.length : 0
+
+      if (utilityCommand.id === 'why_json') {
+        return JSON.stringify(
+          {
+            turnId: latestTurnId,
+            historyTurnsUsed: historyTurns,
+            preferenceItemsUsed: prefCount,
+            persistentFactsConsidered: persistentFacts,
+            rememberedLastEcho,
+          },
+          null,
+          2,
+        )
+      }
+
+      return [
+        colorCommand('Why (latest turn memory usage)'),
+        `- turn id: ${latestTurnId}`,
+        `- history turns used: ${historyTurns}`,
+        `- preference items used: ${prefCount}`,
+        `- persistent facts considered: ${persistentFacts}`,
+        `- remembered last echo: ${rememberedLastEcho}`,
+      ].join('\n')
+
     }
 
-    return [
-      colorCommand('Why (latest turn memory usage)'),
-      `- turn id: ${latestTurnId}`,
-      `- history turns used: ${historyTurns}`,
-      `- preference items used: ${prefCount}`,
-      `- persistent facts considered: ${persistentFacts}`,
-      `- remembered last echo: ${rememberedLastEcho}`,
-    ].join('\n')
-  }
-  if (normalized === '/consolidate-memory') {
-    const result = memory.persistent.consolidate()
-    return colorSuccess(`Memory consolidation complete. Removed ${result.removedCount} stale low-confidence facts.`)
-  }
-  if (normalized === '/consolidate-memory --auto') {
-    const diagnostics = memory.getDiagnostics(sessionId)
-    if (diagnostics.recommendedAction !== 'consolidate') {
-      return colorInfo('Memory is healthy enough. Auto-consolidation skipped.')
+    if (utilityCommand.id === 'consolidate_memory') {
+      const result = memory.persistent.consolidate()
+      return colorSuccess(`Memory consolidation complete. Removed ${result.removedCount} stale low-confidence facts.`)
     }
 
-    const result = memory.persistent.consolidate()
-    return colorSuccess(`Auto-consolidation complete. Removed ${result.removedCount} stale low-confidence facts.`)
+    if (utilityCommand.id === 'consolidate_memory_auto') {
+      const diagnostics = memory.getDiagnostics(sessionId)
+      if (diagnostics.recommendedAction !== 'consolidate') {
+        return colorInfo('Memory is healthy enough. Auto-consolidation skipped.')
+      }
+
+      const result = memory.persistent.consolidate()
+      return colorSuccess(`Auto-consolidation complete. Removed ${result.removedCount} stale low-confidence facts.`)
+    }
   }
   return null
 }

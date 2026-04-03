@@ -23,16 +23,9 @@ export const HELP_TEXT = `
 
 ⚙️  UTILITIES:
 ${REGISTERED_UTILITY_LINES}
-  /clear-history           Clear saved command history
-  /memory                  Show current memory snapshot summary
-  /memory --detailed       Show summary with top persistent facts
   /model                   Show active LLM model policy and alias table
   /model set <v>           Set preferred LLM model or alias (fast/balanced/quality)
   /model clear             Clear preferred LLM model
-  /why                     Explain memory signals used in the latest turn
-  /why --json              Output latest memory-usage explanation in JSON
-  /consolidate-memory      Prune stale low-confidence persistent memory
-  /consolidate-memory --auto  Consolidate only when diagnostics suggest it
   exit, quit               Leave interactive mode
 
 🔐 PERMISSION:
@@ -62,15 +55,9 @@ export const COMMAND_LIST = [
   'get preference <key>',
   'recall last echo',
   ...REGISTERED_UTILITY_TRIGGERS,
-  '/clear-history',
-  '/memory',
-  '/memory --detailed',
   '/model',
   '/model set <model>',
   '/model clear',
-  '/why',
-  '/consolidate-memory',
-  '/consolidate-memory --auto',
   'exit',
   'quit',
 ]
