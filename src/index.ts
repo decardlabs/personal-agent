@@ -30,6 +30,7 @@ import {
   getCompletionSuggestions,
   isKnownCommandInput,
 } from './utils/commandAssist.js'
+import { findUtilityCommandByInput } from './commands/utilityRegistry.js'
 import {
   colorSuccess,
   colorError,
@@ -96,6 +97,7 @@ function executeUtilityCommand(
 ): string | null {
   const raw = command.trim()
   const normalized = command.trim().toLowerCase()
+  const utilityCommand = findUtilityCommandByInput(normalized)
 
   if (normalized === '/model') {
     if (!llmConfigSnapshot) {
@@ -150,15 +152,71 @@ function executeUtilityCommand(
     return colorSuccess(`Model preference saved: ${validation.normalizedModel}${note}`)
   }
 
-  if (normalized === '/help') {
-    return HELP_TEXT
+  if (utilityCommand) {
+    if (utilityCommand.id === 'help') {
+      return HELP_TEXT
+    }
+
+    if (utilityCommand.id === 'history') {
+      return `${colorCommand('Command History (session-first, deduped):')}\n${formatHistory(sessionId, process.cwd())}`
+    }
+
+    if (utilityCommand.id === 'history_all') {
+      return `${colorCommand('Command History (project recent 50):')}\n${formatHistoryAll(process.cwd())}`
+    }
+
+    if (utilityCommand.id === 'diag') {
+      const diagnostics = memory.getDiagnostics(sessionId)
+      const lines = [
+        colorCommand('Diagnostics'),
+        `- history turns: ${diagnostics.historyTurns}`,
+        `- preference count: ${diagnostics.preferenceCount}`,
+        `- persistent fact count: ${diagnostics.persistentFactCount}`,
+        `- stale fact count: ${diagnostics.staleFactCount}`,
+        `- low-confidence fact count: ${diagnostics.lowConfidenceFactCount}`,
+        `- average fact confidence: ${diagnostics.averageFactConfidence.toFixed(2)}`,
+        `- recommended action: ${diagnostics.recommendedAction}`,
+      ]
+      if (isFeatureEnabled('verbose_diag', flags)) {
+        const rankedFacts = memory.persistent.listRankedFacts().slice(0, 10)
+        lines.push('- top ranked facts (verbose_diag):')
+        if (rankedFacts.length === 0) {
+          lines.push('  (none)')
+        } else {
+          for (const fact of rankedFacts) {
+            lines.push(`  ${fact.key}=${fact.value} (conf=${fact.confidence.toFixed(2)})`)
+          }
+        }
+        if (llmConfigSnapshot) {
+          lines.push(`- active model: ${llmConfigSnapshot.model} [${llmConfigSnapshot.source}]`)
+          lines.push(`  ${llmConfigSnapshot.decisionLog.join(' | ')}`)
+        }
+      }
+      return lines.join('\n')
+    }
+
+    if (utilityCommand.id === 'diag_json') {
+      const diagnostics = memory.getDiagnostics(sessionId)
+      const payload: Record<string, unknown> = {
+        sessionId,
+        generatedAt: new Date().toISOString(),
+        diagnostics,
+      }
+      if (isFeatureEnabled('verbose_diag', flags)) {
+        payload['rankedFacts'] = memory.persistent.listRankedFacts().slice(0, 10)
+        if (llmConfigSnapshot) {
+          payload['activeModel'] = {
+            model: llmConfigSnapshot.model,
+            source: llmConfigSnapshot.source,
+            fallbackModel: llmConfigSnapshot.fallbackModel,
+            decisionLog: llmConfigSnapshot.decisionLog,
+          }
+        }
+      }
+      return JSON.stringify(payload, null, 2)
+    }
   }
-  if (normalized === '/history') {
-    return `${colorCommand('Command History (session-first, deduped):')}\n${formatHistory(sessionId, process.cwd())}`
-  }
-  if (normalized === '/history --all') {
-    return `${colorCommand('Command History (project recent 50):')}\n${formatHistoryAll(process.cwd())}`
-  }
+
   if (normalized === '/clear-history') {
     clearHistory()
     return colorSuccess('Command history cleared.')
@@ -183,55 +241,6 @@ function executeUtilityCommand(
     }
 
     return base.join('\n')
-  }
-  if (normalized === '/diag') {
-    const diagnostics = memory.getDiagnostics(sessionId)
-    const lines = [
-      colorCommand('Diagnostics'),
-      `- history turns: ${diagnostics.historyTurns}`,
-      `- preference count: ${diagnostics.preferenceCount}`,
-      `- persistent fact count: ${diagnostics.persistentFactCount}`,
-      `- stale fact count: ${diagnostics.staleFactCount}`,
-      `- low-confidence fact count: ${diagnostics.lowConfidenceFactCount}`,
-      `- average fact confidence: ${diagnostics.averageFactConfidence.toFixed(2)}`,
-      `- recommended action: ${diagnostics.recommendedAction}`,
-    ]
-    if (isFeatureEnabled('verbose_diag', flags)) {
-      const rankedFacts = memory.persistent.listRankedFacts().slice(0, 10)
-      lines.push('- top ranked facts (verbose_diag):')
-      if (rankedFacts.length === 0) {
-        lines.push('  (none)')
-      } else {
-        for (const fact of rankedFacts) {
-          lines.push(`  ${fact.key}=${fact.value} (conf=${fact.confidence.toFixed(2)})`)
-        }
-      }
-      if (llmConfigSnapshot) {
-        lines.push(`- active model: ${llmConfigSnapshot.model} [${llmConfigSnapshot.source}]`)
-        lines.push(`  ${llmConfigSnapshot.decisionLog.join(' | ')}`)
-      }
-    }
-    return lines.join('\n')
-  }
-  if (normalized === '/diag --json') {
-    const diagnostics = memory.getDiagnostics(sessionId)
-    const payload: Record<string, unknown> = {
-      sessionId,
-      generatedAt: new Date().toISOString(),
-      diagnostics,
-    }
-    if (isFeatureEnabled('verbose_diag', flags)) {
-      payload['rankedFacts'] = memory.persistent.listRankedFacts().slice(0, 10)
-      if (llmConfigSnapshot) {
-        payload['activeModel'] = {
-          model: llmConfigSnapshot.model,
-          source: llmConfigSnapshot.source,
-          fallbackModel: llmConfigSnapshot.fallbackModel,
-          decisionLog: llmConfigSnapshot.decisionLog,
-        }
-      }
-    }
-    return JSON.stringify(payload, null, 2)
   }
   if (normalized === '/why' || normalized === '/why --json') {
     const events = repository.listBySession(sessionId, 300)

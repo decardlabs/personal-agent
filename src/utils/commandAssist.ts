@@ -1,3 +1,5 @@
+import { getRegisteredUtilityTriggers } from '../commands/utilityRegistry.js'
+
 const CANONICAL_COMMANDS = [
   'echo',
   'search',
@@ -5,14 +7,10 @@ const CANONICAL_COMMANDS = [
   'set preference',
   'get preference',
   'recall last echo',
-  '/help',
-  '/history',
-  '/history --all',
+  ...getRegisteredUtilityTriggers(),
   '/clear-history',
   '/memory',
   '/memory --detailed',
-  '/diag',
-  '/diag --json',
   '/model',
   '/model set',
   '/model clear',
@@ -52,17 +50,14 @@ function levenshtein(a: string, b: string): number {
 export function isKnownCommandInput(input: string): boolean {
   const normalized = input.trim().toLowerCase()
   if (!normalized) return false
+  const registeredUtilityTriggers = getRegisteredUtilityTriggers()
 
   if (
     normalized === 'recall last echo'
-    || normalized === '/help'
-    || normalized === '/history'
-    || normalized === '/history --all'
+    || registeredUtilityTriggers.includes(normalized)
     || normalized === '/clear-history'
     || normalized === '/memory'
     || normalized === '/memory --detailed'
-    || normalized === '/diag'
-    || normalized === '/diag --json'
     || normalized === '/model'
     || normalized === '/model clear'
     || normalized === '/why'

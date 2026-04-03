@@ -1,3 +1,9 @@
+import { getUtilityCommandRegistry } from '../commands/utilityRegistry.js'
+
+const REGISTERED_UTILITY_LINES = getUtilityCommandRegistry()
+  .map(item => `  ${item.trigger.padEnd(24)}${item.description}`)
+  .join('\n')
+
 export const HELP_TEXT = `
 ╔════════════════════════════════════════════════════════════════╗
 ║              Personal Assistant - Command Reference            ║
@@ -16,14 +22,10 @@ export const HELP_TEXT = `
   recall last echo         Show the last echoed text (cross-session)
 
 ⚙️  UTILITIES:
-  /help                    Show this help message
-  /history                 Show project history (session-first, deduped)
-  /history --all           Show project history (latest 50, raw order)
+${REGISTERED_UTILITY_LINES}
   /clear-history           Clear saved command history
   /memory                  Show current memory snapshot summary
   /memory --detailed       Show summary with top persistent facts
-  /diag                    Show runtime memory diagnostics
-  /diag --json             Output diagnostics in JSON for CI/gating
   /model                   Show active LLM model policy and alias table
   /model set <v>           Set preferred LLM model or alias (fast/balanced/quality)
   /model clear             Clear preferred LLM model
@@ -50,6 +52,8 @@ export const HELP_TEXT = `
 
 export const QUICK_HELP = `Type /help for full command reference`
 
+const REGISTERED_UTILITY_TRIGGERS = getUtilityCommandRegistry().map(item => item.trigger)
+
 export const COMMAND_LIST = [
   'echo <text>',
   'search <query>',
@@ -57,14 +61,10 @@ export const COMMAND_LIST = [
   'set preference <key> <value>',
   'get preference <key>',
   'recall last echo',
-  '/help',
-  '/history',
-  '/history --all',
+  ...REGISTERED_UTILITY_TRIGGERS,
   '/clear-history',
   '/memory',
   '/memory --detailed',
-  '/diag',
-  '/diag --json',
   '/model',
   '/model set <model>',
   '/model clear',
