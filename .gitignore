@@ -9,3 +9,4 @@ Claude-Code/
 *.db-wal
 .env
 .DS_Store
+.workbuddy/
