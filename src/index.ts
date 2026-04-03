@@ -13,6 +13,7 @@ import { createMemoryCoordinator } from './memory/memoryCoordinator.js'
 import { PreferenceStore } from './memory/preferenceMemory.js'
 import { ToolPermissionRepository } from './storage/toolPermissionRepository.js'
 import { createOpenAIResponder } from './llm/openaiResponder.js'
+import { listModelAliasTable, resolveManagedLLMConfig } from './llm/modelManagement.js'
 import type { TurnOptions } from './agent/runTurn.js'
 import { HELP_TEXT, QUICK_HELP } from './utils/help.js'
 import { addToHistory, clearHistory, formatHistory, formatHistoryAll } from './utils/commandHistory.js'
@@ -82,8 +83,48 @@ function executeUtilityCommand(
   sessionId: string,
   repository: SessionEventRepository,
   memory: ReturnType<typeof createMemoryCoordinator>,
+  llmConfigSnapshot: ReturnType<typeof resolveManagedLLMConfig> | null,
 ): string | null {
+  const raw = command.trim()
   const normalized = command.trim().toLowerCase()
+
+  if (normalized === '/model') {
+    if (!llmConfigSnapshot) {
+      return colorInfo('LLM is disabled. Set OPENAI_API_KEY to enable model features.')
+    }
+
+    const aliasLines = listModelAliasTable()
+      .map(item => `  ${item.alias} -> ${item.model}`)
+      .join('\n')
+
+    return [
+      colorCommand('LLM Model Configuration'),
+      `- active model: ${llmConfigSnapshot.model}`,
+      `- source: ${llmConfigSnapshot.source}`,
+      `- fallback model: ${llmConfigSnapshot.fallbackModel ?? '(none)'}`,
+      `- timeout ms: ${llmConfigSnapshot.timeoutMs}`,
+      `- max retries: ${llmConfigSnapshot.maxRetries}`,
+      `- temperature: ${llmConfigSnapshot.temperature}`,
+      `- max output tokens: ${llmConfigSnapshot.maxOutputTokens ?? '(default)'}`,
+      '- aliases:',
+      aliasLines,
+      '- commands: /model set <alias|model>, /model clear',
+    ].join('\n')
+  }
+
+  if (normalized === '/model clear') {
+    memory.preferences.delete('llm_model')
+    return colorSuccess('Model preference cleared. Next turns use environment/default model.')
+  }
+
+  if (normalized.startsWith('/model set ')) {
+    const value = raw.slice('/model set '.length).trim()
+    if (!value) {
+      return colorWarn('Usage: /model set <alias|model-name>')
+    }
+    memory.preferences.set('llm_model', value)
+    return colorSuccess(`Model preference saved: ${value}`)
+  }
 
   if (normalized === '/help') {
     return HELP_TEXT
@@ -253,19 +294,34 @@ async function main(): Promise<void> {
   const approveRisky = process.argv.includes('--approve-risky')
   const { input: parsedInput, hasInput } = parseInputArgs(process.argv.slice(2))
   const llmApiKey = process.env.OPENAI_API_KEY
-  const llmModel = process.env.OPENAI_MODEL
   const llmBaseUrl = process.env.OPENAI_BASE_URL
-  const openaiResponder = llmApiKey
-    ? createOpenAIResponder(
-        llmModel && llmBaseUrl
-          ? { apiKey: llmApiKey, model: llmModel, baseUrl: llmBaseUrl }
-          : llmModel
-            ? { apiKey: llmApiKey, model: llmModel }
-            : llmBaseUrl
-              ? { apiKey: llmApiKey, baseUrl: llmBaseUrl }
-              : { apiKey: llmApiKey },
-      )
-    : undefined
+
+  const buildManagedLLMConfig = () => {
+    if (!llmApiKey) {
+      return null
+    }
+
+    const managedInput: {
+      preferenceModel: string | null
+      envModel?: string
+      envFallbackModel?: string
+      envTimeoutMs?: string
+      envMaxRetries?: string
+      envTemperature?: string
+      envMaxOutputTokens?: string
+    } = {
+      preferenceModel: memory.preferences.get('llm_model'),
+    }
+
+    if (process.env.OPENAI_MODEL !== undefined) managedInput.envModel = process.env.OPENAI_MODEL
+    if (process.env.OPENAI_FALLBACK_MODEL !== undefined) managedInput.envFallbackModel = process.env.OPENAI_FALLBACK_MODEL
+    if (process.env.OPENAI_TIMEOUT_MS !== undefined) managedInput.envTimeoutMs = process.env.OPENAI_TIMEOUT_MS
+    if (process.env.OPENAI_MAX_RETRIES !== undefined) managedInput.envMaxRetries = process.env.OPENAI_MAX_RETRIES
+    if (process.env.OPENAI_TEMPERATURE !== undefined) managedInput.envTemperature = process.env.OPENAI_TEMPERATURE
+    if (process.env.OPENAI_MAX_OUTPUT_TOKENS !== undefined) managedInput.envMaxOutputTokens = process.env.OPENAI_MAX_OUTPUT_TOKENS
+
+    return resolveManagedLLMConfig(managedInput)
+  }
 
   const buildTurnOptions = (): TurnOptions => {
     const autoConsolidationConfig = {
@@ -277,17 +333,41 @@ async function main(): Promise<void> {
     }
 
     const base: TurnOptions = { approveRisky, autoConsolidationConfig }
-    if (openaiResponder) {
+    const managed = buildManagedLLMConfig()
+    if (managed && llmApiKey) {
+      const responderOptions: {
+        apiKey: string
+        model: string
+        fallbackModel?: string
+        baseUrl?: string
+        timeoutMs: number
+        maxRetries: number
+        temperature: number
+        maxOutputTokens?: number | null
+      } = {
+        apiKey: llmApiKey,
+        model: managed.model,
+        timeoutMs: managed.timeoutMs,
+        maxRetries: managed.maxRetries,
+        temperature: managed.temperature,
+      }
+
+      if (managed.fallbackModel) responderOptions.fallbackModel = managed.fallbackModel
+      if (llmBaseUrl !== undefined) responderOptions.baseUrl = llmBaseUrl
+      if (managed.maxOutputTokens !== null) responderOptions.maxOutputTokens = managed.maxOutputTokens
+
+      const responder = createOpenAIResponder(responderOptions)
+
       return {
         ...base,
-        llmResponder: args => openaiResponder(args),
+        llmResponder: args => responder(args),
       }
     }
     return base
   }
 
   if (hasInput) {
-    const utilityOutput = executeUtilityCommand(parsedInput, 'oneshot', repository, memory)
+    const utilityOutput = executeUtilityCommand(parsedInput, 'oneshot', repository, memory, buildManagedLLMConfig())
     if (utilityOutput !== null) {
       console.log(utilityOutput)
       return
@@ -335,7 +415,7 @@ async function main(): Promise<void> {
       continue
     }
 
-    const utilityOutput = executeUtilityCommand(line, sessionId, repository, memory)
+    const utilityOutput = executeUtilityCommand(line, sessionId, repository, memory, buildManagedLLMConfig())
     if (utilityOutput !== null) {
       console.log(utilityOutput)
       continue

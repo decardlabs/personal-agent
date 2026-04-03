@@ -10,6 +10,7 @@ describe('commandAssist', () => {
     expect(isKnownCommandInput('echo hello')).toBe(true)
     expect(isKnownCommandInput('/why --json')).toBe(true)
     expect(isKnownCommandInput('set preference lang python')).toBe(true)
+    expect(isKnownCommandInput('/model set quality')).toBe(true)
   })
 
   it('returns prefix-based completion suggestions', () => {

@@ -13,6 +13,9 @@ const CANONICAL_COMMANDS = [
   '/memory --detailed',
   '/diag',
   '/diag --json',
+  '/model',
+  '/model set',
+  '/model clear',
   '/why',
   '/consolidate-memory',
   '/consolidate-memory --auto',
@@ -60,6 +63,8 @@ export function isKnownCommandInput(input: string): boolean {
     || normalized === '/memory --detailed'
     || normalized === '/diag'
     || normalized === '/diag --json'
+    || normalized === '/model'
+    || normalized === '/model clear'
     || normalized === '/why'
     || normalized === '/why --json'
     || normalized === '/consolidate-memory'
@@ -77,6 +82,7 @@ export function isKnownCommandInput(input: string): boolean {
     || normalized.startsWith('read file ')
     || normalized.startsWith('set preference ')
     || normalized.startsWith('get preference ')
+    || normalized.startsWith('/model set ')
   )
 }
 

@@ -24,6 +24,9 @@ export const HELP_TEXT = `
   /memory --detailed       Show summary with top persistent facts
   /diag                    Show runtime memory diagnostics
   /diag --json             Output diagnostics in JSON for CI/gating
+  /model                   Show active LLM model policy and alias table
+  /model set <v>           Set preferred LLM model or alias (fast/balanced/quality)
+  /model clear             Clear preferred LLM model
   /why                     Explain memory signals used in the latest turn
   /why --json              Output latest memory-usage explanation in JSON
   /consolidate-memory      Prune stale low-confidence persistent memory
@@ -62,6 +65,9 @@ export const COMMAND_LIST = [
   '/memory --detailed',
   '/diag',
   '/diag --json',
+  '/model',
+  '/model set <model>',
+  '/model clear',
   '/why',
   '/consolidate-memory',
   '/consolidate-memory --auto',

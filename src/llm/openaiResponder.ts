@@ -16,8 +16,13 @@ type OpenAIChatResponse = {
 export type OpenAIResponderOptions = {
   apiKey: string
   model?: string
+  fallbackModel?: string
   baseUrl?: string
-  fetchImpl?: (input: string, init?: { method?: string; headers?: Record<string, string>; body?: string }) => Promise<{
+  timeoutMs?: number
+  maxRetries?: number
+  temperature?: number
+  maxOutputTokens?: number | null
+  fetchImpl?: (input: string, init?: { method?: string; headers?: Record<string, string>; body?: string; signal?: AbortSignal }) => Promise<{
     ok: boolean
     status: number
     text(): Promise<string>
@@ -47,7 +52,12 @@ export type LLMResponderArgs = {
 
 export function createOpenAIResponder(options: OpenAIResponderOptions): (args: LLMResponderArgs) => Promise<string> {
   const model = options.model ?? 'gpt-4o-mini'
+  const fallbackModel = options.fallbackModel ?? null
   const baseUrl = options.baseUrl ?? 'https://api.openai.com/v1'
+  const timeoutMs = options.timeoutMs ?? 20000
+  const maxRetries = options.maxRetries ?? 1
+  const temperature = options.temperature ?? 0.2
+  const maxOutputTokens = options.maxOutputTokens ?? null
   const fetchImpl = options.fetchImpl ?? (globalThis.fetch as unknown as OpenAIResponderOptions['fetchImpl'])
 
   if (!fetchImpl) {
@@ -93,29 +103,64 @@ export function createOpenAIResponder(options: OpenAIResponderOptions): (args: L
 
     messages.push({ role: 'user', content: input })
 
-    const response = await fetchImpl(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${options.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model,
-        messages,
-        temperature: 0.2,
-      }),
-    })
+    const modelCandidates = [model, fallbackModel].filter((value, idx, arr): value is string =>
+      Boolean(value) && arr.indexOf(value) === idx,
+    )
 
-    if (!response.ok) {
-      throw new Error(`OpenAI request failed with status ${response.status}: ${await response.text()}`)
+    const isRetryableStatus = (status: number): boolean =>
+      [408, 429, 500, 502, 503, 504].includes(status)
+
+    let lastError: Error | null = null
+
+    for (const selectedModel of modelCandidates) {
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        const controller = new AbortController()
+        const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs)
+        try {
+          const response = await fetchImpl(`${baseUrl}/chat/completions`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${options.apiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              model: selectedModel,
+              messages,
+              temperature,
+              max_tokens: maxOutputTokens ?? undefined,
+            }),
+            signal: controller.signal,
+          })
+
+          if (!response.ok) {
+            const body = await response.text()
+            if (attempt < maxRetries && isRetryableStatus(response.status)) {
+              continue
+            }
+            throw new Error(
+              `OpenAI request failed (model=${selectedModel}) with status ${response.status}: ${body}`,
+            )
+          }
+
+          const data = await response.json()
+          const content = data.choices?.[0]?.message?.content?.trim()
+          if (!content) {
+            throw new Error(`OpenAI response missing message content (model=${selectedModel})`)
+          }
+
+          return content
+        } catch (error) {
+          const err = error instanceof Error ? error : new Error(String(error))
+          lastError = err
+          if (attempt >= maxRetries) {
+            break
+          }
+        } finally {
+          clearTimeout(timeoutHandle)
+        }
+      }
     }
 
-    const data = await response.json()
-    const content = data.choices?.[0]?.message?.content?.trim()
-    if (!content) {
-      throw new Error('OpenAI response missing message content')
-    }
-
-    return content
+    throw lastError ?? new Error('OpenAI request failed without a concrete error')
   }
 }
