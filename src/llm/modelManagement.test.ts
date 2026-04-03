@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  applyModelPreferenceMigrations,
   getAllowedModels,
   listModelAliasTable,
   resolveManagedLLMConfig,
@@ -107,5 +108,52 @@ describe('modelManagement', () => {
     expect(cfg.decisionLog[0]).toContain("default alias")
     expect(cfg.decisionLog[0]).toContain("balanced")
     expect(cfg.decisionLog[1]).toBe('fallback: none')
+  })
+
+  it('migrates stale gpt-4 preference to gpt-4o-mini', () => {
+    const store = new Map<string, string>([['llm_model', 'gpt-4']])
+    const preferences = {
+      get: (key: string) => store.get(key) ?? null,
+      set: (key: string, value: string) => { store.set(key, value) },
+    }
+    const result = applyModelPreferenceMigrations(preferences)
+    expect(result.applied).toBe(true)
+    expect(result.migrationId).toBe('rename-gpt-4-to-gpt-4o-mini')
+    expect(result.previousValue).toBe('gpt-4')
+    expect(result.newValue).toBe('gpt-4o-mini')
+    expect(store.get('llm_model')).toBe('gpt-4o-mini')
+  })
+
+  it('migrates stale gpt-3.5-turbo preference to gpt-4o-mini', () => {
+    const store = new Map<string, string>([['llm_model', 'gpt-3.5-turbo']])
+    const preferences = {
+      get: (key: string) => store.get(key) ?? null,
+      set: (key: string, value: string) => { store.set(key, value) },
+    }
+    const result = applyModelPreferenceMigrations(preferences)
+    expect(result.applied).toBe(true)
+    expect(result.newValue).toBe('gpt-4o-mini')
+  })
+
+  it('skips migration when preference is already current', () => {
+    const store = new Map<string, string>([['llm_model', 'gpt-4o-mini']])
+    const preferences = {
+      get: (key: string) => store.get(key) ?? null,
+      set: (key: string, value: string) => { store.set(key, value) },
+    }
+    const result = applyModelPreferenceMigrations(preferences)
+    expect(result.applied).toBe(false)
+    expect(result.migrationId).toBeNull()
+    expect(store.get('llm_model')).toBe('gpt-4o-mini')
+  })
+
+  it('skips migration when no llm_model preference is set', () => {
+    const preferences = {
+      get: (_key: string) => null,
+      set: (_key: string, _value: string) => {},
+    }
+    const result = applyModelPreferenceMigrations(preferences)
+    expect(result.applied).toBe(false)
+    expect(result.previousValue).toBeNull()
   })
 })

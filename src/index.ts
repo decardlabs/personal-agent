@@ -14,6 +14,7 @@ import { PreferenceStore } from './memory/preferenceMemory.js'
 import { ToolPermissionRepository } from './storage/toolPermissionRepository.js'
 import { createOpenAIResponder } from './llm/openaiResponder.js'
 import {
+  applyModelPreferenceMigrations,
   getAllowedModels,
   listModelAliasTable,
   resolveManagedLLMConfig,
@@ -302,6 +303,14 @@ async function main(): Promise<void> {
   const preferenceMemory = new PreferenceStore(preferenceRepository)
   const memory = createMemoryCoordinator(persistentMemory, preferenceMemory)
   const permissionRepository = new ToolPermissionRepository(db)
+
+  const modelMigration = applyModelPreferenceMigrations(memory.preferences)
+  if (modelMigration.applied) {
+    logger.info(
+      { migrationId: modelMigration.migrationId, from: modelMigration.previousValue, to: modelMigration.newValue },
+      'model preference migrated',
+    )
+  }
 
   logger.info({ state: 'started' }, 'personal-assistant bootstrap complete')
 

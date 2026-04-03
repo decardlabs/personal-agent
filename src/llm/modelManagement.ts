@@ -210,3 +210,75 @@ export function validateAndNormalizePreferredModel(
     resolvedFromAlias: normalized.toLowerCase() !== raw.toLowerCase(),
   }
 }
+
+// ---------------------------------------------------------------------------
+// Model preference migrations
+// ---------------------------------------------------------------------------
+
+export type ModelMigrationEntry = {
+  /** Human-readable ID, used for dedup / logging (e.g. "rename-gpt-4-to-gpt-4o-mini") */
+  id: string
+  /** Exact saved value that is stale */
+  staleValue: string
+  /** Replacement value to write */
+  replacementValue: string
+  reason: string
+}
+
+export type ModelMigrationResult = {
+  applied: boolean
+  migrationId: string | null
+  previousValue: string | null
+  newValue: string | null
+}
+
+/**
+ * Ordered list of model preference migrations.
+ * Append new entries to the END — never reorder or remove existing entries.
+ */
+const MODEL_PREFERENCE_MIGRATIONS: ModelMigrationEntry[] = [
+  {
+    id: 'rename-gpt-4-to-gpt-4o-mini',
+    staleValue: 'gpt-4',
+    replacementValue: 'gpt-4o-mini',
+    reason: 'gpt-4 was removed; mapped to gpt-4o-mini (balanced default)',
+  },
+  {
+    id: 'rename-gpt-35-turbo-to-gpt-4o-mini',
+    staleValue: 'gpt-3.5-turbo',
+    replacementValue: 'gpt-4o-mini',
+    reason: 'gpt-3.5-turbo is deprecated; mapped to gpt-4o-mini',
+  },
+]
+
+/**
+ * Checks the stored `llm_model` preference against the migration table.
+ * If a stale value is found, rewrites it via `setPreference` and returns
+ * a `ModelMigrationResult` describing what changed.
+ *
+ * Accepts duck-typed preference accessors so the caller does not need to
+ * depend on a concrete class.
+ */
+export function applyModelPreferenceMigrations(preferences: {
+  get(key: string): string | null
+  set(key: string, value: string): void
+}): ModelMigrationResult {
+  const current = preferences.get('llm_model')
+  if (!current) {
+    return { applied: false, migrationId: null, previousValue: null, newValue: null }
+  }
+
+  for (const migration of MODEL_PREFERENCE_MIGRATIONS) {
+    if (current === migration.staleValue) {
+      preferences.set('llm_model', migration.replacementValue)
+      return {
+        applied: true,
+        migrationId: migration.id,
+        previousValue: migration.staleValue,
+        newValue: migration.replacementValue,
+      }
+    }
+  }
+
+  return { applied: false, migrationId: null, previousValue: current, newValue: null }
+}
