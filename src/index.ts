@@ -32,6 +32,11 @@ import {
 } from './utils/commandAssist.js'
 import { findUtilityCommandByInput } from './commands/utilityRegistry.js'
 import {
+  buildTurnExplanation,
+  formatStatusPanel,
+  formatTurnExplanation,
+} from './utils/interactionPanels.js'
+import {
   colorSuccess,
   colorError,
   colorInfo,
@@ -93,6 +98,7 @@ function executeUtilityCommand(
   repository: SessionEventRepository,
   memory: ReturnType<typeof createMemoryCoordinator>,
   llmConfigSnapshot: ReturnType<typeof resolveManagedLLMConfig> | null,
+  approveRisky: boolean,
   flags: ReadonlySet<FeatureFlag> = new Set(),
 ): string | null {
   const raw = command.trim()
@@ -102,6 +108,18 @@ function executeUtilityCommand(
   if (utilityCommand) {
     if (utilityCommand.id === 'exit' || utilityCommand.id === 'quit') {
       return colorInfo('Exit command is only available in interactive mode.')
+    }
+
+    if (utilityCommand.id === 'status') {
+      const diagnostics = memory.getDiagnostics(sessionId)
+      return formatStatusPanel({
+        sessionId,
+        cwd: process.cwd(),
+        approveRisky,
+        featureFlags: flags,
+        diagnostics,
+        llmConfigSnapshot,
+      })
     }
 
     if (utilityCommand.id === 'model') {
@@ -255,47 +273,18 @@ function executeUtilityCommand(
       }
 
       const latestTurnId = latestCompleted.turnId
-      const reasoning = events.find(
-        event => event.turnId === latestTurnId && event.eventType === 'reasoning_started',
-      )
+      const turnEvents = repository.listByTurn(sessionId, latestTurnId)
+      const explanation = buildTurnExplanation(turnEvents)
 
-      if (!reasoning) {
+      if (!explanation) {
         return colorInfo('No reasoning trace found for the latest turn.')
       }
 
-      const payload = reasoning.payload as Record<string, unknown>
-      const historyTurns = typeof payload.historyTurns === 'number' ? payload.historyTurns : 0
-      const persistentFacts = typeof payload.persistentFacts === 'number' ? payload.persistentFacts : 0
-      const rememberedLastEcho =
-        typeof payload.rememberedLastEcho === 'string' && payload.rememberedLastEcho.length > 0
-          ? payload.rememberedLastEcho
-          : '(none)'
-      const context = payload.context as Record<string, unknown> | undefined
-      const prefCount = Array.isArray(context?.preferences) ? context.preferences.length : 0
-
       if (utilityCommand.id === 'why_json') {
-        return JSON.stringify(
-          {
-            turnId: latestTurnId,
-            historyTurnsUsed: historyTurns,
-            preferenceItemsUsed: prefCount,
-            persistentFactsConsidered: persistentFacts,
-            rememberedLastEcho,
-          },
-          null,
-          2,
-        )
+        return JSON.stringify(explanation, null, 2)
       }
 
-      return [
-        colorCommand('Why (latest turn memory usage)'),
-        `- turn id: ${latestTurnId}`,
-        `- history turns used: ${historyTurns}`,
-        `- preference items used: ${prefCount}`,
-        `- persistent facts considered: ${persistentFacts}`,
-        `- remembered last echo: ${rememberedLastEcho}`,
-      ].join('\n')
-
+      return formatTurnExplanation(explanation)
     }
 
     if (utilityCommand.id === 'consolidate_memory') {
@@ -447,7 +436,7 @@ async function main(): Promise<void> {
   }
 
   if (hasInput) {
-    const utilityOutput = executeUtilityCommand(parsedInput, 'oneshot', repository, memory, buildManagedLLMConfig(), featureFlags)
+    const utilityOutput = executeUtilityCommand(parsedInput, 'oneshot', repository, memory, buildManagedLLMConfig(), approveRisky, featureFlags)
     if (utilityOutput !== null) {
       console.log(utilityOutput)
       return
@@ -501,7 +490,7 @@ async function main(): Promise<void> {
       break
     }
 
-    const utilityOutput = executeUtilityCommand(line, sessionId, repository, memory, buildManagedLLMConfig(), featureFlags)
+    const utilityOutput = executeUtilityCommand(line, sessionId, repository, memory, buildManagedLLMConfig(), approveRisky, featureFlags)
     if (utilityOutput !== null) {
       console.log(utilityOutput)
       continue

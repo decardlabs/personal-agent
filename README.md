@@ -100,6 +100,7 @@ When running in interactive mode, you can use these utility commands:
 - `/history`: Show your last 50 commands (persisted across sessions).
 - `/clear-history`: Clear the command history file.
 - `/memory`: Show a compact memory snapshot (preferences/history/facts/context).
+- `/status`: Show runtime status for model, memory, permissions, and feature flags.
 - `/diag`: Show memory diagnostics counters.
 - `/diag --json`: Export memory diagnostics as JSON (for CI/gating).
 - `/model`: Show active LLM model policy (source, fallback, retries, aliases).
@@ -136,6 +137,7 @@ npm run dev
 > /history                           # Show command history
 > /clear-history                     # Clear history
 > /memory                            # Inspect memory snapshot
+> /status                            # Inspect runtime status panel
 > /diag                              # View memory diagnostics
 > /diag --json                       # Export diagnostics in JSON
 > /model                             # Inspect active model policy

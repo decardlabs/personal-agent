@@ -9,6 +9,7 @@ export type UtilityCommandSpec = {
   | 'memory_detailed'
   | 'diag'
   | 'diag_json'
+  | 'status'
   | 'model'
   | 'model_clear'
   | 'model_set'
@@ -72,6 +73,12 @@ const UTILITY_COMMAND_REGISTRY: UtilityCommandSpec[] = [
     id: 'diag_json',
     trigger: '/diag --json',
     description: 'Output diagnostics in JSON for CI/gating',
+  },
+  {
+    command: '/status',
+    id: 'status',
+    trigger: '/status',
+    description: 'Show runtime status for model, memory, permissions, and flags',
   },
   {
     command: '/model',
