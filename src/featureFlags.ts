@@ -18,11 +18,14 @@
 export type FeatureFlag =
   /** Adds ranked facts list and active model config to /diag output */
   | 'verbose_diag'
+  /** Renders a read-only terminal dashboard around the existing REPL loop */
+  | 'ui_tui_mvp'
   /** Reserved: streaming LLM responses (not yet implemented) */
   | 'llm_streaming'
 
 export const KNOWN_FEATURE_FLAGS: readonly FeatureFlag[] = [
   'verbose_diag',
+  'ui_tui_mvp',
   'llm_streaming',
 ]
 

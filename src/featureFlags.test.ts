@@ -19,16 +19,18 @@ describe('featureFlags', () => {
   })
 
   it('parses multiple known flags separated by commas', () => {
-    const flags = parseFeatureFlags('verbose_diag,llm_streaming')
+    const flags = parseFeatureFlags('verbose_diag,llm_streaming,ui_tui_mvp')
     expect(flags.has('verbose_diag')).toBe(true)
     expect(flags.has('llm_streaming')).toBe(true)
-    expect(flags.size).toBe(2)
+    expect(flags.has('ui_tui_mvp')).toBe(true)
+    expect(flags.size).toBe(3)
   })
 
   it('trims whitespace around flag names', () => {
-    const flags = parseFeatureFlags('  verbose_diag , llm_streaming  ')
+    const flags = parseFeatureFlags('  verbose_diag , llm_streaming , ui_tui_mvp  ')
     expect(flags.has('verbose_diag')).toBe(true)
     expect(flags.has('llm_streaming')).toBe(true)
+    expect(flags.has('ui_tui_mvp')).toBe(true)
   })
 
   it('silently ignores unknown flag names', () => {
@@ -53,5 +55,6 @@ describe('featureFlags', () => {
   it('KNOWN_FEATURE_FLAGS contains at least verbose_diag and llm_streaming', () => {
     expect(KNOWN_FEATURE_FLAGS).toContain('verbose_diag')
     expect(KNOWN_FEATURE_FLAGS).toContain('llm_streaming')
+    expect(KNOWN_FEATURE_FLAGS).toContain('ui_tui_mvp')
   })
 })

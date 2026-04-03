@@ -100,7 +100,7 @@ When running in interactive mode, you can use these utility commands:
 - `/history`: Show your last 50 commands (persisted across sessions).
 - `/clear-history`: Clear the command history file.
 - `/memory`: Show a compact memory snapshot (preferences/history/facts/context).
-- `/status`: Show runtime status for model, memory, permissions, and feature flags.
+- `/status`: Show runtime status for model, memory, permissions, feature flags, and latest turn summary.
 - `/diag`: Show memory diagnostics counters.
 - `/diag --json`: Export memory diagnostics as JSON (for CI/gating).
 - `/model`: Show active LLM model policy (source, fallback, retries, aliases).
@@ -163,6 +163,20 @@ Example:
 export MEMORY_AUTO_CONSOLIDATE_ENABLED=true
 export MEMORY_AUTO_CONSOLIDATE_MIN_TURNS=10
 export MEMORY_AUTO_CONSOLIDATE_MIN_HOURS=12
+npm run dev
+```
+
+### Optional UI feature flags
+
+Feature flags are provided through `FEATURE_FLAGS` as a comma-separated list.
+
+- `verbose_diag`: enrich `/diag` output with ranked facts and active model details
+- `ui_tui_mvp`: render a read-only terminal dashboard around the current REPL loop
+
+Example:
+
+```bash
+export FEATURE_FLAGS="ui_tui_mvp,verbose_diag"
 npm run dev
 ```
 

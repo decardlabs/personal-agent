@@ -57,6 +57,28 @@ import {
   colorCommand,
   formatPrompt,
 } from './cli/colorOutput.js'
+import { renderTerminalDashboard } from './ui/renderers/terminalDashboard.js'
+
+function renderDashboardIfEnabled(
+  sessionId: string,
+  memory: ReturnType<typeof createMemoryCoordinator>,
+  llmConfigSnapshot: ReturnType<typeof resolveManagedLLMConfig> | null,
+  uiState: ReturnType<typeof createUIStateStore>,
+  flags: ReadonlySet<FeatureFlag>,
+): void {
+  if (!isFeatureEnabled('ui_tui_mvp', flags)) {
+    return
+  }
+
+  console.log(renderTerminalDashboard({
+    sessionId,
+    cwd: process.cwd(),
+    featureFlags: flags,
+    diagnostics: memory.getDiagnostics(sessionId),
+    llmConfigSnapshot,
+    uiState: uiState.getState(),
+  }))
+}
 
 function parseBooleanEnv(value: string | undefined, defaultValue: boolean): boolean {
   if (value === undefined) {
@@ -453,16 +475,19 @@ async function main(): Promise<void> {
 
   if (hasInput) {
     initializeOneshotUI(uiState, parsedInput)
+    renderDashboardIfEnabled('oneshot', memory, buildManagedLLMConfig(), uiState, featureFlags)
     const matchedUtility = findUtilityCommandByInput(parsedInput)
     const utilityOutput = executeUtilityCommand(parsedInput, 'oneshot', repository, memory, buildManagedLLMConfig(), uiState.getState, approveRisky, featureFlags)
     if (utilityOutput !== null) {
       completeUtilityExecution(uiState, matchedUtility, parsedInput, utilityOutput, 'stopped')
+      renderDashboardIfEnabled('oneshot', memory, buildManagedLLMConfig(), uiState, featureFlags)
       console.log(utilityOutput)
       return
     }
 
     if (maybePrintCommandAssist(parsedInput)) {
       recordCommandAssist(uiState, parsedInput, 'stopped')
+      renderDashboardIfEnabled('oneshot', memory, buildManagedLLMConfig(), uiState, featureFlags)
       return
     }
 
@@ -480,6 +505,7 @@ async function main(): Promise<void> {
 
     const events = repository.listByTurn(result.sessionId, result.turnId)
     completeTurnExecution(uiState, parsedInput, result.turnId, result.response, events.length, 'stopped', result.sessionId)
+    renderDashboardIfEnabled(result.sessionId, memory, buildManagedLLMConfig(), uiState, featureFlags)
     logger.info(
       {
         sessionId: result.sessionId,
@@ -499,6 +525,7 @@ async function main(): Promise<void> {
     { sessionId },
     'interactive mode started'
   )
+  renderDashboardIfEnabled(sessionId, memory, buildManagedLLMConfig(), uiState, featureFlags)
   console.log(colorInfo(QUICK_HELP))
 
   while (true) {
@@ -512,6 +539,7 @@ async function main(): Promise<void> {
     const matchedCommand = findUtilityCommandByInput(line)
     if (matchedCommand && (matchedCommand.id === 'exit' || matchedCommand.id === 'quit')) {
       handleExitCommand(uiState, matchedCommand, line)
+      renderDashboardIfEnabled(sessionId, memory, buildManagedLLMConfig(), uiState, featureFlags)
       logger.info({ sessionId }, 'interactive mode stopped')
       break
     }
@@ -520,12 +548,14 @@ async function main(): Promise<void> {
     const utilityOutput = executeUtilityCommand(line, sessionId, repository, memory, buildManagedLLMConfig(), uiState.getState, approveRisky, featureFlags)
     if (utilityOutput !== null) {
       completeUtilityExecution(uiState, matchedCommand, line, utilityOutput, 'awaiting_input')
+      renderDashboardIfEnabled(sessionId, memory, buildManagedLLMConfig(), uiState, featureFlags)
       console.log(utilityOutput)
       continue
     }
 
     if (maybePrintCommandAssist(line)) {
       recordCommandAssist(uiState, line, 'awaiting_input')
+      renderDashboardIfEnabled(sessionId, memory, buildManagedLLMConfig(), uiState, featureFlags)
       continue
     }
 
@@ -546,6 +576,7 @@ async function main(): Promise<void> {
 
     const events = repository.listByTurn(result.sessionId, result.turnId)
     completeTurnExecution(uiState, line, result.turnId, result.response, events.length, 'awaiting_input')
+    renderDashboardIfEnabled(sessionId, memory, buildManagedLLMConfig(), uiState, featureFlags)
     logger.info(
       {
         sessionId: result.sessionId,
