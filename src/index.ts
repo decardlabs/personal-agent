@@ -20,6 +20,8 @@ import {
   resolveManagedLLMConfig,
   validateAndNormalizePreferredModel,
 } from './llm/modelManagement.js'
+import { isFeatureEnabled, parseFeatureFlags } from './featureFlags.js'
+import type { FeatureFlag } from './featureFlags.js'
 import type { TurnOptions } from './agent/runTurn.js'
 import { HELP_TEXT, QUICK_HELP } from './utils/help.js'
 import { addToHistory, clearHistory, formatHistory, formatHistoryAll } from './utils/commandHistory.js'
@@ -90,6 +92,7 @@ function executeUtilityCommand(
   repository: SessionEventRepository,
   memory: ReturnType<typeof createMemoryCoordinator>,
   llmConfigSnapshot: ReturnType<typeof resolveManagedLLMConfig> | null,
+  flags: ReadonlySet<FeatureFlag> = new Set(),
 ): string | null {
   const raw = command.trim()
   const normalized = command.trim().toLowerCase()
@@ -183,7 +186,7 @@ function executeUtilityCommand(
   }
   if (normalized === '/diag') {
     const diagnostics = memory.getDiagnostics(sessionId)
-    return [
+    const lines = [
       colorCommand('Diagnostics'),
       `- history turns: ${diagnostics.historyTurns}`,
       `- preference count: ${diagnostics.preferenceCount}`,
@@ -192,19 +195,43 @@ function executeUtilityCommand(
       `- low-confidence fact count: ${diagnostics.lowConfidenceFactCount}`,
       `- average fact confidence: ${diagnostics.averageFactConfidence.toFixed(2)}`,
       `- recommended action: ${diagnostics.recommendedAction}`,
-    ].join('\n')
+    ]
+    if (isFeatureEnabled('verbose_diag', flags)) {
+      const rankedFacts = memory.persistent.listRankedFacts().slice(0, 10)
+      lines.push('- top ranked facts (verbose_diag):')
+      if (rankedFacts.length === 0) {
+        lines.push('  (none)')
+      } else {
+        for (const fact of rankedFacts) {
+          lines.push(`  ${fact.key}=${fact.value} (conf=${fact.confidence.toFixed(2)})`)
+        }
+      }
+      if (llmConfigSnapshot) {
+        lines.push(`- active model: ${llmConfigSnapshot.model} [${llmConfigSnapshot.source}]`)
+        lines.push(`  ${llmConfigSnapshot.decisionLog.join(' | ')}`)
+      }
+    }
+    return lines.join('\n')
   }
   if (normalized === '/diag --json') {
     const diagnostics = memory.getDiagnostics(sessionId)
-    return JSON.stringify(
-      {
-        sessionId,
-        generatedAt: new Date().toISOString(),
-        diagnostics,
-      },
-      null,
-      2,
-    )
+    const payload: Record<string, unknown> = {
+      sessionId,
+      generatedAt: new Date().toISOString(),
+      diagnostics,
+    }
+    if (isFeatureEnabled('verbose_diag', flags)) {
+      payload['rankedFacts'] = memory.persistent.listRankedFacts().slice(0, 10)
+      if (llmConfigSnapshot) {
+        payload['activeModel'] = {
+          model: llmConfigSnapshot.model,
+          source: llmConfigSnapshot.source,
+          fallbackModel: llmConfigSnapshot.fallbackModel,
+          decisionLog: llmConfigSnapshot.decisionLog,
+        }
+      }
+    }
+    return JSON.stringify(payload, null, 2)
   }
   if (normalized === '/why' || normalized === '/why --json') {
     const events = repository.listBySession(sessionId, 300)
@@ -312,6 +339,11 @@ async function main(): Promise<void> {
     )
   }
 
+  const featureFlags = parseFeatureFlags(process.env.FEATURE_FLAGS)
+  if (featureFlags.size > 0) {
+    logger.info({ flags: [...featureFlags] }, 'feature flags enabled')
+  }
+
   logger.info({ state: 'started' }, 'personal-assistant bootstrap complete')
 
   const row = db
@@ -397,7 +429,7 @@ async function main(): Promise<void> {
   }
 
   if (hasInput) {
-    const utilityOutput = executeUtilityCommand(parsedInput, 'oneshot', repository, memory, buildManagedLLMConfig())
+    const utilityOutput = executeUtilityCommand(parsedInput, 'oneshot', repository, memory, buildManagedLLMConfig(), featureFlags)
     if (utilityOutput !== null) {
       console.log(utilityOutput)
       return
@@ -445,7 +477,7 @@ async function main(): Promise<void> {
       continue
     }
 
-    const utilityOutput = executeUtilityCommand(line, sessionId, repository, memory, buildManagedLLMConfig())
+    const utilityOutput = executeUtilityCommand(line, sessionId, repository, memory, buildManagedLLMConfig(), featureFlags)
     if (utilityOutput !== null) {
       console.log(utilityOutput)
       continue
