@@ -23,7 +23,6 @@ export const HELP_TEXT = `
 
 ⚙️  UTILITIES:
 ${REGISTERED_UTILITY_LINES}
-  exit, quit               Leave interactive mode
 
 🔐 PERMISSION:
   --approve-risky          Flag to auto-approve risky commands
@@ -52,6 +51,4 @@ export const COMMAND_LIST = [
   'get preference <key>',
   'recall last echo',
   ...REGISTERED_UTILITY_COMMANDS,
-  'exit',
-  'quit',
 ]

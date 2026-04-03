@@ -100,6 +100,10 @@ function executeUtilityCommand(
   const utilityCommand = findUtilityCommandByInput(normalized)
 
   if (utilityCommand) {
+    if (utilityCommand.id === 'exit' || utilityCommand.id === 'quit') {
+      return colorInfo('Exit command is only available in interactive mode.')
+    }
+
     if (utilityCommand.id === 'model') {
       if (!llmConfigSnapshot) {
         return colorInfo('LLM is disabled. Set OPENAI_API_KEY to enable model features.')
@@ -491,6 +495,12 @@ async function main(): Promise<void> {
       continue
     }
 
+    const matchedCommand = findUtilityCommandByInput(line)
+    if (matchedCommand && (matchedCommand.id === 'exit' || matchedCommand.id === 'quit')) {
+      logger.info({ sessionId }, 'interactive mode stopped')
+      break
+    }
+
     const utilityOutput = executeUtilityCommand(line, sessionId, repository, memory, buildManagedLLMConfig(), featureFlags)
     if (utilityOutput !== null) {
       console.log(utilityOutput)
@@ -499,11 +509,6 @@ async function main(): Promise<void> {
 
     if (maybePrintCommandAssist(line)) {
       continue
-    }
-
-    if (line.toLowerCase() === 'exit' || line.toLowerCase() === 'quit') {
-      logger.info({ sessionId }, 'interactive mode stopped')
-      break
     }
 
     const result = await runTurn(

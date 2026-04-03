@@ -4,6 +4,7 @@ import {
   getRegisteredUtilityAssistTriggers,
   getRegisteredUtilityExactTriggers,
   getUtilityCommandRegistry,
+  validateUtilityCommandRegistry,
 } from './utilityRegistry.js'
 
 describe('utilityRegistry', () => {
@@ -19,6 +20,8 @@ describe('utilityRegistry', () => {
     expect(findUtilityCommandByInput('/model clear')?.id).toBe('model_clear')
     expect(findUtilityCommandByInput('/model set quality')?.id).toBe('model_set')
     expect(findUtilityCommandByInput('/model set')?.id).toBe('model_set')
+    expect(findUtilityCommandByInput('exit')?.id).toBe('exit')
+    expect(findUtilityCommandByInput('quit')?.id).toBe('quit')
   })
 
   it('supports case-insensitive and trimmed inputs', () => {
@@ -39,10 +42,16 @@ describe('utilityRegistry', () => {
     expect(exactTriggers).toContain('/diag --json')
     expect(exactTriggers).toContain('/memory')
     expect(exactTriggers).toContain('/model')
+    expect(exactTriggers).toContain('exit')
+    expect(exactTriggers).toContain('quit')
     expect(exactTriggers).not.toContain('/model set')
 
     expect(assistTriggers).toContain('/model set')
     expect(assistTriggers).toContain('/consolidate-memory')
     expect(assistTriggers.length).toBe(registry.length)
+  })
+
+  it('has no conflicting utility command triggers', () => {
+    expect(validateUtilityCommandRegistry()).toEqual([])
   })
 })

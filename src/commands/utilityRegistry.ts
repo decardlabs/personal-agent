@@ -16,6 +16,8 @@ export type UtilityCommandSpec = {
   | 'why_json'
   | 'consolidate_memory'
   | 'consolidate_memory_auto'
+  | 'exit'
+  | 'quit'
   trigger: string
   description: string
   matchMode?: 'exact' | 'prefix'
@@ -115,6 +117,18 @@ const UTILITY_COMMAND_REGISTRY: UtilityCommandSpec[] = [
     trigger: '/consolidate-memory --auto',
     description: 'Consolidate only when diagnostics suggest it',
   },
+  {
+    command: 'exit',
+    id: 'exit',
+    trigger: 'exit',
+    description: 'Leave interactive mode',
+  },
+  {
+    command: 'quit',
+    id: 'quit',
+    trigger: 'quit',
+    description: 'Leave interactive mode',
+  },
 ]
 
 export function getUtilityCommandRegistry(): UtilityCommandSpec[] {
@@ -142,4 +156,43 @@ export function getRegisteredUtilityExactTriggers(): string[] {
 
 export function getRegisteredUtilityAssistTriggers(): string[] {
   return UTILITY_COMMAND_REGISTRY.map(item => item.trigger)
+}
+
+export function validateUtilityCommandRegistry(): string[] {
+  const errors: string[] = []
+  const seen = new Set<string>()
+
+  for (const item of UTILITY_COMMAND_REGISTRY) {
+    const mode = item.matchMode ?? 'exact'
+    const key = `${mode}:${item.trigger}`
+    if (seen.has(key)) {
+      errors.push(`duplicate trigger for ${key}`)
+      continue
+    }
+    seen.add(key)
+  }
+
+  const exact = UTILITY_COMMAND_REGISTRY.filter(item => (item.matchMode ?? 'exact') === 'exact')
+  const prefix = UTILITY_COMMAND_REGISTRY.filter(item => (item.matchMode ?? 'exact') === 'prefix')
+
+  for (const p of prefix) {
+    for (const e of exact) {
+      if (e.trigger === p.trigger) {
+        errors.push(`ambiguous exact/prefix overlap: ${e.trigger} <-> ${p.trigger}`)
+      }
+    }
+  }
+
+  for (const p of prefix) {
+    for (const other of prefix) {
+      if (p.id === other.id) {
+        continue
+      }
+      if (p.trigger === other.trigger || p.trigger.startsWith(`${other.trigger} `) || other.trigger.startsWith(`${p.trigger} `)) {
+        errors.push(`ambiguous prefix overlap: ${p.trigger} <-> ${other.trigger}`)
+      }
+    }
+  }
+
+  return errors
 }
