@@ -99,60 +99,60 @@ function executeUtilityCommand(
   const normalized = command.trim().toLowerCase()
   const utilityCommand = findUtilityCommandByInput(normalized)
 
-  if (normalized === '/model') {
-    if (!llmConfigSnapshot) {
-      return colorInfo('LLM is disabled. Set OPENAI_API_KEY to enable model features.')
-    }
-
-    const aliasLines = listModelAliasTable()
-      .map(item => `  ${item.alias} -> ${item.model}`)
-      .join('\n')
-
-    return [
-      colorCommand('LLM Model Configuration'),
-      `- active model: ${llmConfigSnapshot.model}`,
-      `- source: ${llmConfigSnapshot.source}`,
-      `- fallback model: ${llmConfigSnapshot.fallbackModel ?? '(none)'}`,
-      `- allowed models policy: ${getAllowedModels(process.env.OPENAI_ALLOWED_MODELS).join(', ')}`,
-      `- timeout ms: ${llmConfigSnapshot.timeoutMs}`,
-      `- max retries: ${llmConfigSnapshot.maxRetries}`,
-      `- temperature: ${llmConfigSnapshot.temperature}`,
-      `- max output tokens: ${llmConfigSnapshot.maxOutputTokens ?? '(default)'}`,
-      '- aliases:',
-      aliasLines,
-      '- commands: /model set <alias|model>, /model clear',
-    ].join('\n')
-  }
-
-  if (normalized === '/model clear') {
-    memory.preferences.delete('llm_model')
-    return colorSuccess('Model preference cleared. Next turns use environment/default model.')
-  }
-
-  if (normalized.startsWith('/model set ')) {
-    const value = raw.slice('/model set '.length).trim()
-    if (!value) {
-      return colorWarn('Usage: /model set <alias|model-name>')
-    }
-
-    const validation = process.env.OPENAI_ALLOWED_MODELS === undefined
-      ? validateAndNormalizePreferredModel(value)
-      : validateAndNormalizePreferredModel(value, {
-        envAllowedModels: process.env.OPENAI_ALLOWED_MODELS,
-      })
-    if (!validation.ok) {
-      return colorError([
-        `Model preference rejected: ${validation.message}`,
-        `Suggestions: ${validation.suggestions.join(', ') || '(none)'}`,
-      ].join('\n'))
-    }
-
-    memory.preferences.set('llm_model', validation.normalizedModel)
-    const note = validation.resolvedFromAlias ? ` (resolved from alias '${value}')` : ''
-    return colorSuccess(`Model preference saved: ${validation.normalizedModel}${note}`)
-  }
-
   if (utilityCommand) {
+    if (utilityCommand.id === 'model') {
+      if (!llmConfigSnapshot) {
+        return colorInfo('LLM is disabled. Set OPENAI_API_KEY to enable model features.')
+      }
+
+      const aliasLines = listModelAliasTable()
+        .map(item => `  ${item.alias} -> ${item.model}`)
+        .join('\n')
+
+      return [
+        colorCommand('LLM Model Configuration'),
+        `- active model: ${llmConfigSnapshot.model}`,
+        `- source: ${llmConfigSnapshot.source}`,
+        `- fallback model: ${llmConfigSnapshot.fallbackModel ?? '(none)'}`,
+        `- allowed models policy: ${getAllowedModels(process.env.OPENAI_ALLOWED_MODELS).join(', ')}`,
+        `- timeout ms: ${llmConfigSnapshot.timeoutMs}`,
+        `- max retries: ${llmConfigSnapshot.maxRetries}`,
+        `- temperature: ${llmConfigSnapshot.temperature}`,
+        `- max output tokens: ${llmConfigSnapshot.maxOutputTokens ?? '(default)'}`,
+        '- aliases:',
+        aliasLines,
+        '- commands: /model set <alias|model>, /model clear',
+      ].join('\n')
+    }
+
+    if (utilityCommand.id === 'model_clear') {
+      memory.preferences.delete('llm_model')
+      return colorSuccess('Model preference cleared. Next turns use environment/default model.')
+    }
+
+    if (utilityCommand.id === 'model_set') {
+      const value = raw.slice(utilityCommand.trigger.length).trim()
+      if (!value) {
+        return colorWarn('Usage: /model set <alias|model-name>')
+      }
+
+      const validation = process.env.OPENAI_ALLOWED_MODELS === undefined
+        ? validateAndNormalizePreferredModel(value)
+        : validateAndNormalizePreferredModel(value, {
+          envAllowedModels: process.env.OPENAI_ALLOWED_MODELS,
+        })
+      if (!validation.ok) {
+        return colorError([
+          `Model preference rejected: ${validation.message}`,
+          `Suggestions: ${validation.suggestions.join(', ') || '(none)'}`,
+        ].join('\n'))
+      }
+
+      memory.preferences.set('llm_model', validation.normalizedModel)
+      const note = validation.resolvedFromAlias ? ` (resolved from alias '${value}')` : ''
+      return colorSuccess(`Model preference saved: ${validation.normalizedModel}${note}`)
+    }
+
     if (utilityCommand.id === 'help') {
       return HELP_TEXT
     }

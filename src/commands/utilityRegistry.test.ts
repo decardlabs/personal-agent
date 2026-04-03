@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   findUtilityCommandByInput,
-  getRegisteredUtilityTriggers,
+  getRegisteredUtilityAssistTriggers,
+  getRegisteredUtilityExactTriggers,
   getUtilityCommandRegistry,
 } from './utilityRegistry.js'
 
@@ -14,6 +15,10 @@ describe('utilityRegistry', () => {
     expect(findUtilityCommandByInput('/memory --detailed')?.id).toBe('memory_detailed')
     expect(findUtilityCommandByInput('/why --json')?.id).toBe('why_json')
     expect(findUtilityCommandByInput('/consolidate-memory --auto')?.id).toBe('consolidate_memory_auto')
+    expect(findUtilityCommandByInput('/model')?.id).toBe('model')
+    expect(findUtilityCommandByInput('/model clear')?.id).toBe('model_clear')
+    expect(findUtilityCommandByInput('/model set quality')?.id).toBe('model_set')
+    expect(findUtilityCommandByInput('/model set')?.id).toBe('model_set')
   })
 
   it('supports case-insensitive and trimmed inputs', () => {
@@ -27,12 +32,17 @@ describe('utilityRegistry', () => {
 
   it('exposes consistent trigger list with registry items', () => {
     const registry = getUtilityCommandRegistry()
-    const triggers = getRegisteredUtilityTriggers()
-    expect(triggers).toEqual(registry.map(item => item.trigger))
-    expect(triggers).toContain('/help')
-    expect(triggers).toContain('/diag --json')
-    expect(triggers).toContain('/memory')
-    expect(triggers).toContain('/why')
-    expect(triggers).toContain('/consolidate-memory')
+    const exactTriggers = getRegisteredUtilityExactTriggers()
+    const assistTriggers = getRegisteredUtilityAssistTriggers()
+
+    expect(exactTriggers).toContain('/help')
+    expect(exactTriggers).toContain('/diag --json')
+    expect(exactTriggers).toContain('/memory')
+    expect(exactTriggers).toContain('/model')
+    expect(exactTriggers).not.toContain('/model set')
+
+    expect(assistTriggers).toContain('/model set')
+    expect(assistTriggers).toContain('/consolidate-memory')
+    expect(assistTriggers.length).toBe(registry.length)
   })
 })

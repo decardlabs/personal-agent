@@ -1,7 +1,7 @@
 import { getUtilityCommandRegistry } from '../commands/utilityRegistry.js'
 
 const REGISTERED_UTILITY_LINES = getUtilityCommandRegistry()
-  .map(item => `  ${item.trigger.padEnd(24)}${item.description}`)
+  .map(item => `  ${item.command.padEnd(24)}${item.description}`)
   .join('\n')
 
 export const HELP_TEXT = `
@@ -23,9 +23,6 @@ export const HELP_TEXT = `
 
 ⚙️  UTILITIES:
 ${REGISTERED_UTILITY_LINES}
-  /model                   Show active LLM model policy and alias table
-  /model set <v>           Set preferred LLM model or alias (fast/balanced/quality)
-  /model clear             Clear preferred LLM model
   exit, quit               Leave interactive mode
 
 🔐 PERMISSION:
@@ -45,7 +42,7 @@ ${REGISTERED_UTILITY_LINES}
 
 export const QUICK_HELP = `Type /help for full command reference`
 
-const REGISTERED_UTILITY_TRIGGERS = getUtilityCommandRegistry().map(item => item.trigger)
+const REGISTERED_UTILITY_COMMANDS = getUtilityCommandRegistry().map(item => item.command)
 
 export const COMMAND_LIST = [
   'echo <text>',
@@ -54,10 +51,7 @@ export const COMMAND_LIST = [
   'set preference <key> <value>',
   'get preference <key>',
   'recall last echo',
-  ...REGISTERED_UTILITY_TRIGGERS,
-  '/model',
-  '/model set <model>',
-  '/model clear',
+  ...REGISTERED_UTILITY_COMMANDS,
   'exit',
   'quit',
 ]

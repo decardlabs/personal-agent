@@ -1,4 +1,7 @@
-import { getRegisteredUtilityTriggers } from '../commands/utilityRegistry.js'
+import {
+  getRegisteredUtilityAssistTriggers,
+  getRegisteredUtilityExactTriggers,
+} from '../commands/utilityRegistry.js'
 
 const CANONICAL_COMMANDS = [
   'echo',
@@ -7,16 +10,7 @@ const CANONICAL_COMMANDS = [
   'set preference',
   'get preference',
   'recall last echo',
-  ...getRegisteredUtilityTriggers(),
-  '/clear-history',
-  '/memory',
-  '/memory --detailed',
-  '/model',
-  '/model set',
-  '/model clear',
-  '/why',
-  '/consolidate-memory',
-  '/consolidate-memory --auto',
+  ...getRegisteredUtilityAssistTriggers(),
   'exit',
   'quit',
 ]
@@ -50,20 +44,11 @@ function levenshtein(a: string, b: string): number {
 export function isKnownCommandInput(input: string): boolean {
   const normalized = input.trim().toLowerCase()
   if (!normalized) return false
-  const registeredUtilityTriggers = getRegisteredUtilityTriggers()
+  const registeredUtilityExactTriggers = getRegisteredUtilityExactTriggers()
 
   if (
     normalized === 'recall last echo'
-    || registeredUtilityTriggers.includes(normalized)
-    || normalized === '/clear-history'
-    || normalized === '/memory'
-    || normalized === '/memory --detailed'
-    || normalized === '/model'
-    || normalized === '/model clear'
-    || normalized === '/why'
-    || normalized === '/why --json'
-    || normalized === '/consolidate-memory'
-    || normalized === '/consolidate-memory --auto'
+    || registeredUtilityExactTriggers.includes(normalized)
     || normalized === 'exit'
     || normalized === 'quit'
   ) {
