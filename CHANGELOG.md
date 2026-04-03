@@ -12,11 +12,25 @@ The format is based on Keep a Changelog and Semantic Versioning.
 - `exit` and `quit` commands for leaving interactive mode.
 - Optional OpenAI responder integration for non-tool prompts via `OPENAI_API_KEY`.
 - `src/llm/openaiResponder.ts` for Chat Completions API calls.
+- `search <query>` command and `src/tools/searchTool.ts` for project-wide file content search.
+- `detectSearchCommand` parser in `inputNormalizer.ts`.
+- `searchToolRunner` injectable in `TurnOptions` for deterministic test isolation.
+- Replay suite summary statistics via `runReplaySuite`: pass rate, per-case elapsed time, failure classification (assertion_mismatch / timeout / unexpected_error / unknown).
+- `formatReplaySuiteSummary` for human-readable terminal output.
+- `src/testing/replayReport.ts` CLI entry with optional `--json <path>` export.
+- `test:replay:report` and `test:replay:report:json` npm scripts.
+- CI workflow uploads `reports/replay-summary.json` as a build artifact on every run.
+- Permission risk detection upgraded to mixed strategy: command-structure analysis first, regex fallback second.
+- `src/policies/permissionPolicy.test.ts` unit test suite for the permission evaluator.
+- `PA_LOG_LEVEL` environment variable controls log verbosity (default: `info`).
 
 ### Changed
 
 - CLI startup behavior: with input args it runs one-shot; without args it enters REPL.
 - `runTurn` is now async and can call an injected `llmResponder` before fallback.
+- Fallback response updated to reflect both echo and search command availability.
+- CI quality gate now covers build, unit tests, replay regression, and replay JSON report generation.
+- ROADMAP current focus updated to reflect M3 completion and M4 start.
 
 ### Fixed
 

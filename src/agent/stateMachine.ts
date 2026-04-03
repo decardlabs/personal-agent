@@ -7,13 +7,20 @@ export type AgentState =
   | 'feeding_back_result'
   | 'done'
 
-let currentState: AgentState = 'idle'
-
-export function transitionTo(state: AgentState): AgentState {
-  currentState = state
-  return currentState
+export type StateMachine = {
+  transitionTo: (state: AgentState) => AgentState
+  getCurrentState: () => AgentState
 }
 
-export function getCurrentState(): AgentState {
-  return currentState
+export function createStateMachine(initial: AgentState = 'idle'): StateMachine {
+  let currentState: AgentState = initial
+  return {
+    transitionTo(state: AgentState): AgentState {
+      currentState = state
+      return currentState
+    },
+    getCurrentState(): AgentState {
+      return currentState
+    },
+  }
 }

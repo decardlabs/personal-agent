@@ -45,4 +45,24 @@ export class SessionEventRepository {
       createdAt: row.created_at,
     }))
   }
+
+  listBySession(sessionId: string, limit = 200): TurnEvent[] {
+    const rows = this.db
+      .prepare(
+        `SELECT session_id, turn_id, event_type, payload_json, created_at
+         FROM session_events
+         WHERE session_id = ?
+         ORDER BY id DESC
+         LIMIT ?`,
+      )
+      .all(sessionId, limit) as SessionEventRow[]
+
+    return rows.map(row => ({
+      sessionId: row.session_id,
+      turnId: row.turn_id,
+      eventType: row.event_type,
+      payload: JSON.parse(row.payload_json) as Record<string, unknown>,
+      createdAt: row.created_at,
+    }))
+  }
 }

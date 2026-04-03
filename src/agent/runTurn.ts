@@ -1,9 +1,18 @@
 import { randomUUID } from 'node:crypto'
 import type { SessionEventRepository } from '../storage/sessionEventRepository.js'
 import { runEchoTool } from '../tools/echoTool.js'
-import { transitionTo } from './stateMachine.js'
+import { runSearchTool } from '../tools/searchTool.js'
+import { runReadFileTool } from '../tools/readFileTool.js'
+import { createStateMachine } from './stateMachine.js'
 import type { TurnEvent } from './types.js'
-import { detectEchoCommand, normalizeInput } from './inputNormalizer.js'
+import {
+  detectEchoCommand,
+  detectSearchCommand,
+  detectReadFileCommand,
+  detectSetPreferenceCommand,
+  detectGetPreferenceCommand,
+  normalizeInput,
+} from './inputNormalizer.js'
 import type { MemoryCoordinator } from '../memory/memoryCoordinator.js'
 import { evaluatePermission } from '../policies/permissionPolicy.js'
 import { ToolPermissionRepository } from '../storage/toolPermissionRepository.js'
@@ -20,12 +29,16 @@ export type TurnOptions = {
   turnTimeoutMs?: number
   maxToolRetries?: number
   echoToolRunner?: (args: { content: string }) => { output: string }
+  searchToolRunner?: (args: { query: string }) => { output: string }
+  readFileToolRunner?: (args: { filePath: string }) => { output: string }
   llmResponder?: (args: {
     input: string
     sessionId: string
     turnId: string
     rememberedLastEcho: string | null
     context: ReturnType<MemoryCoordinator['getContextSnapshot']>
+    history: import('../memory/sessionMemory.js').HistoryEntry[]
+    persistentFacts: ReturnType<MemoryCoordinator['retrieveForLLM']>['persistentFacts']
   }) => Promise<string>
 }
 
@@ -55,8 +68,9 @@ export async function runTurn(
   const turnId = randomUUID()
   const turnStartedAt = Date.now()
   const permissionScope = options.permissionScope ?? 'project'
+  const sm = createStateMachine()
 
-  transitionTo('normalizing_input')
+  sm.transitionTo('normalizing_input')
   const normalizedInput = normalizeInput(input)
   memory.session.set(sessionId, 'last_input', normalizedInput)
   repository.save(
@@ -66,24 +80,46 @@ export async function runTurn(
     }),
   )
 
-  transitionTo('reasoning')
-  const context = memory.getContextSnapshot()
+  sm.transitionTo('reasoning')
+  const memoryBundle = memory.retrieveForLLM(sessionId)
+  const context = {
+    ...memoryBundle.context,
+    preferences: memoryBundle.preferences,
+  }
   const rememberedLastEcho = memory.persistent.get('last_echo_output')
   repository.save(
     createEvent(sessionId, turnId, 'reasoning_started', {
       normalizedInput,
       context,
       rememberedLastEcho,
+      historyTurns: memoryBundle.history.length,
+      persistentFacts: memoryBundle.persistentFacts.length,
     }),
   )
 
   const echoPayload = detectEchoCommand(normalizedInput)
-  let response = 'I can run echo only in this MVP. Try: echo hello'
+  const searchPayload = detectSearchCommand(normalizedInput)
+  const readFilePayload = detectReadFileCommand(normalizedInput)
+  const setPreferencePayload = detectSetPreferenceCommand(normalizedInput)
+  const getPreferencePayload = detectGetPreferenceCommand(normalizedInput)
+  let response = 'I can run echo/search/read in this MVP. Try: echo hello, search runTurn, or read src/index.ts'
+
+  const resolvedToolName = echoPayload
+    ? 'echo'
+    : searchPayload
+      ? 'search'
+      : readFilePayload
+        ? 'read-file'
+        : setPreferencePayload
+          ? 'set-preference'
+          : getPreferencePayload
+            ? 'get-preference'
+            : 'assistant'
 
   const permissionDecision = evaluatePermission(
     {
       normalizedInput,
-      toolName: 'echo',
+      toolName: resolvedToolName,
       scope: permissionScope,
       approveRisky: options.approveRisky ?? false,
     },
@@ -91,10 +127,10 @@ export async function runTurn(
   )
 
   if (!permissionDecision.allowed) {
-    transitionTo('awaiting_permission')
+    sm.transitionTo('awaiting_permission')
     repository.save(
       createEvent(sessionId, turnId, 'permission_required', {
-        toolName: 'echo',
+        toolName: resolvedToolName,
         permissionKey: permissionDecision.permissionKey,
         reason: permissionDecision.reason,
       }),
@@ -105,7 +141,7 @@ export async function runTurn(
   if (permissionDecision.allowed && permissionDecision.permissionKey) {
     repository.save(
       createEvent(sessionId, turnId, 'permission_granted', {
-        toolName: 'echo',
+        toolName: resolvedToolName,
         permissionKey: permissionDecision.permissionKey,
         reason: permissionDecision.reason,
       }),
@@ -118,8 +154,36 @@ export async function runTurn(
       : 'No echo memory yet.'
   }
 
+  if (setPreferencePayload && permissionDecision.allowed) {
+    memory.preferences.set(setPreferencePayload.key, setPreferencePayload.value)
+    response = `Preference set: ${setPreferencePayload.key} = ${setPreferencePayload.value}`
+    repository.save(
+      createEvent(sessionId, turnId, 'turn_completed', { response }),
+    )
+    sm.transitionTo('done')
+    memory.session.pushHistory(sessionId, { input: normalizedInput, response })
+    return { sessionId, turnId, response }
+  }
+
+  if (getPreferencePayload && permissionDecision.allowed) {
+    const prefValue = memory.preferences.get(getPreferencePayload)
+    response = prefValue !== null
+      ? `Preference ${getPreferencePayload} = ${prefValue}`
+      : `Preference '${getPreferencePayload}' not set.`
+    repository.save(
+      createEvent(sessionId, turnId, 'turn_completed', { response }),
+    )
+    sm.transitionTo('done')
+    memory.session.pushHistory(sessionId, { input: normalizedInput, response })
+    return { sessionId, turnId, response }
+  }
+
   if (
     !echoPayload
+    && !searchPayload
+    && !readFilePayload
+    && !setPreferencePayload
+    && !getPreferencePayload
     && normalizedInput.toLowerCase() !== 'recall last echo'
     && permissionDecision.allowed
     && options.llmResponder
@@ -136,6 +200,8 @@ export async function runTurn(
         turnId,
         rememberedLastEcho,
         context,
+        history: memoryBundle.history,
+        persistentFacts: memoryBundle.persistentFacts,
       })
       response = llmResponse.trim() || response
       repository.save(
@@ -152,42 +218,59 @@ export async function runTurn(
     }
   }
 
-  if (echoPayload && permissionDecision.allowed) {
+  if ((echoPayload || searchPayload || readFilePayload) && permissionDecision.allowed) {
     const elapsedMs = Date.now() - turnStartedAt
     if (options.turnTimeoutMs !== undefined && elapsedMs >= options.turnTimeoutMs) {
-      transitionTo('done')
+      sm.transitionTo('done')
       repository.save(
-        createEvent(sessionId, turnId, 'tool_timeout', { toolName: 'echo', elapsedMs }),
+        createEvent(sessionId, turnId, 'tool_timeout', {
+          toolName: resolvedToolName,
+          elapsedMs,
+        }),
       )
       repository.save(
         createEvent(sessionId, turnId, 'turn_cancelled', { reason: 'timeout' }),
       )
-      return { sessionId, turnId, response: 'Turn cancelled: tool execution timed out.' }
+      response = 'Turn cancelled: tool execution timed out.'
+      memory.session.pushHistory(sessionId, { input: normalizedInput, response })
+      return { sessionId, turnId, response }
     }
 
-    transitionTo('executing_tool')
+    sm.transitionTo('executing_tool')
     repository.save(
       createEvent(sessionId, turnId, 'tool_called', {
-        toolName: 'echo',
+        toolName: resolvedToolName,
         content: echoPayload,
+        query: searchPayload,
+        filePath: readFilePayload,
       }),
     )
 
     const echoRunner = options.echoToolRunner ?? runEchoTool
+    const searchRunner = options.searchToolRunner ?? runSearchTool
+    const readFileRunner = options.readFileToolRunner ?? runReadFileTool
     const maxRetries = options.maxToolRetries ?? 0
     let attempt = 0
     let toolResult!: { output: string }
     try {
       while (true) {
         try {
-          toolResult = echoRunner({ content: echoPayload })
+          if (echoPayload) {
+            toolResult = echoRunner({ content: echoPayload })
+          } else if (searchPayload) {
+            toolResult = searchRunner({ query: searchPayload })
+          } else if (readFilePayload) {
+            toolResult = readFileRunner({ filePath: readFilePayload })
+          } else {
+            throw new Error('No supported tool payload found')
+          }
           break
         } catch (err) {
           if (attempt < maxRetries) {
             attempt++
             repository.save(
               createEvent(sessionId, turnId, 'tool_retry', {
-                toolName: 'echo',
+                toolName: resolvedToolName,
                 attempt,
                 error: String(err),
               }),
@@ -198,38 +281,48 @@ export async function runTurn(
         }
       }
     } catch (err) {
-      transitionTo('done')
+      sm.transitionTo('done')
       repository.save(
         createEvent(sessionId, turnId, 'tool_error', {
-          toolName: 'echo',
+          toolName: resolvedToolName,
           error: String(err),
         }),
       )
       repository.save(
         createEvent(sessionId, turnId, 'turn_completed', { response: 'Tool execution failed. Please try again.' }),
       )
-      return { sessionId, turnId, response: 'Tool execution failed. Please try again.' }
+      response = 'Tool execution failed. Please try again.'
+      memory.session.pushHistory(sessionId, { input: normalizedInput, response })
+      return { sessionId, turnId, response }
     }
 
-    memory.persistent.set('last_echo_output', toolResult.output, 0.9)
+    if (echoPayload) {
+      memory.persistent.set('last_echo_output', toolResult.output, 0.9)
+    }
     memory.session.set(sessionId, 'last_response', toolResult.output)
     repository.save(
       createEvent(sessionId, turnId, 'tool_result_received', {
-        toolName: 'echo',
+        toolName: resolvedToolName,
         output: toolResult.output,
       }),
     )
 
-    transitionTo('feeding_back_result')
-    response = `Echo: ${toolResult.output}`
+    sm.transitionTo('feeding_back_result')
+    response = echoPayload
+      ? `Echo: ${toolResult.output}`
+      : searchPayload
+        ? `Search results:\n${toolResult.output}`
+        : `File:\n${toolResult.output}`
   }
 
-  transitionTo('done')
+  sm.transitionTo('done')
   repository.save(
     createEvent(sessionId, turnId, 'turn_completed', {
       response,
     }),
   )
+
+  memory.session.pushHistory(sessionId, { input: normalizedInput, response })
 
   return {
     sessionId,

@@ -115,14 +115,26 @@ Acceptance:
 - Release checklist is green.
 - Beta release record is completed.
 
-## Current Sprint Backlog (Week 6)
+## Completed — M3 Sprint (Week 6)
 
-1. Stabilize error paths: ensure uncaught throws in tool runners produce graceful responses.
-2. Improve developer runbook: README quick-start, env setup, and contribution guide.
-3. Add replay summary report (pass/fail ratio and per-case elapsed time).
-4. Add permission expiration checks in `ToolPermissionRepository.hasPermission()`.
-5. Bump version to `v0.2.0-beta.1` and complete pre-release checklist.
-6. Create `v0.2.0-beta.1` release record and tag.
+1. ✅ Replay summary metrics (pass rate, per-case elapsed time, failure classification).
+2. ✅ Permission risk detection upgraded to mixed strategy (command structure + regex fallback).
+3. ✅ Search-tool deterministic replay via injectable `mockSearchOutput`.
+4. ✅ CI quality gate (build + test + replay) with JSON artifact upload.
+5. ✅ Roadmap and CHANGELOG synced to post-`v0.2.0-beta.1` state.
+
+## Current Sprint — M3 Close-out + M4 Start
+
+1. Add `reports/` to `.gitignore` so generated JSON is not committed.
+2. Honour `PA_LOG_LEVEL` env var in logger; set `silent` in Vitest global setup to eliminate migration noise.
+3. Refactor `stateMachine.ts`: remove global mutable state, return per-turn state context.
+4. Narrow `getPermissionKey` to command-semantic fingerprint (command word + flags only).
+5. Implement `read-file` tool: `src/tools/readFileTool.ts` with path safety checks and line-range support.
+6. Implement `PreferenceRepository` over `user_preferences` table and wire into `MemoryCoordinator`.
+7. Add `set preference` / `get preference` commands through `inputNormalizer` + `runTurn`.
+8. Add session history window to `SessionMemoryStore`; pass last-N-turns to LLM prompt.
+9. Enrich `llmResponder` call with context snapshot + persistent memory facts + session history.
+10. Write back confident LLM results to `PersistentMemoryStore` (threshold: confidence ≥ 0.8).
 
 ## Definition of Done
 

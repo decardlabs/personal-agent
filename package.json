@@ -12,11 +12,14 @@
     "build": "tsup src/index.ts --format esm --dts --clean",
     "test": "vitest run",
     "test:replay": "vitest run src/testing/replayRunner.test.ts",
+    "test:replay:report": "tsx src/testing/replayReport.ts",
+    "test:replay:report:json": "tsx src/testing/replayReport.ts --json reports/replay-summary.json",
     "test:watch": "vitest",
     "migrate": "tsx src/storage/migrate.ts"
   },
   "dependencies": {
     "better-sqlite3": "^11.8.1",
+    "chalk": "^5.6.2",
     "pino": "^9.2.0",
     "zod": "^3.24.1"
   },

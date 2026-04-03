@@ -1,5 +1,7 @@
+import type { HistoryEntry } from '../memory/sessionMemory.js'
+
 type ChatMessage = {
-  role: 'system' | 'user'
+  role: 'system' | 'user' | 'assistant'
   content: string
 }
 
@@ -23,7 +25,27 @@ export type OpenAIResponderOptions = {
   }>
 }
 
-export function createOpenAIResponder(options: OpenAIResponderOptions): (prompt: string) => Promise<string> {
+export type LLMResponderArgs = {
+  input: string
+  sessionId: string
+  turnId: string
+  rememberedLastEcho: string | null
+  context: {
+    cwd: string
+    platform: string
+    timestamp: string
+    preferences: Array<{ key: string; value: string }>
+  }
+  history: HistoryEntry[]
+  persistentFacts: Array<{
+    key: string
+    value: string
+    confidence: number
+    updatedAt: string
+  }>
+}
+
+export function createOpenAIResponder(options: OpenAIResponderOptions): (args: LLMResponderArgs) => Promise<string> {
   const model = options.model ?? 'gpt-4o-mini'
   const baseUrl = options.baseUrl ?? 'https://api.openai.com/v1'
   const fetchImpl = options.fetchImpl ?? (globalThis.fetch as unknown as OpenAIResponderOptions['fetchImpl'])
@@ -32,17 +54,44 @@ export function createOpenAIResponder(options: OpenAIResponderOptions): (prompt:
     throw new Error('No fetch implementation available for OpenAI responder')
   }
 
-  return async (prompt: string): Promise<string> => {
+  return async (args: LLMResponderArgs): Promise<string> => {
+    const { input, context, history, rememberedLastEcho, persistentFacts } = args
+
+    const prefLines = context.preferences.length > 0
+      ? context.preferences.map(p => `  ${p.key}: ${p.value}`).join('\n')
+      : '  (none)'
+
+    const systemContent = [
+      'You are a concise and helpful assistant in a CLI environment.',
+      '',
+      `Context:`,
+      `  cwd: ${context.cwd}`,
+      `  platform: ${context.platform}`,
+      `  timestamp: ${context.timestamp}`,
+      rememberedLastEcho ? `  last echo: ${rememberedLastEcho}` : null,
+      '',
+      'User preferences:',
+      prefLines,
+      '',
+      'Persistent facts:',
+      persistentFacts.length > 0
+        ? persistentFacts
+          .map(fact => `  ${fact.key}=${fact.value} (confidence=${fact.confidence.toFixed(2)})`)
+          .join('\n')
+        : '  (none)',
+    ].filter(line => line !== null).join('\n')
+
     const messages: ChatMessage[] = [
-      {
-        role: 'system',
-        content: 'You are a concise and helpful assistant in a CLI environment.',
-      },
-      {
-        role: 'user',
-        content: prompt,
-      },
+      { role: 'system', content: systemContent },
     ]
+
+    // Inject history as alternating user/assistant messages
+    for (const entry of history) {
+      messages.push({ role: 'user', content: entry.input })
+      messages.push({ role: 'assistant', content: entry.response })
+    }
+
+    messages.push({ role: 'user', content: input })
 
     const response = await fetchImpl(`${baseUrl}/chat/completions`, {
       method: 'POST',

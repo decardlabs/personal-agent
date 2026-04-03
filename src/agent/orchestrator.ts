@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto'
-import { transitionTo } from './stateMachine.js'
+import { createStateMachine } from './stateMachine.js'
 import type { TurnEvent } from './types.js'
 
 export function createTurnStartEvent(input: string): TurnEvent {
-  transitionTo('normalizing_input')
+  createStateMachine().transitionTo('normalizing_input')
   return {
     sessionId: randomUUID(),
     turnId: randomUUID(),

@@ -59,4 +59,72 @@ export class MemoryFactRepository {
       updatedAt: row.updated_at,
     }
   }
+
+  listByScope(
+    scope: string,
+    limit = 20,
+    minConfidence = 0,
+  ): Array<{
+    scope: string
+    key: string
+    value: unknown
+    confidence: number
+    updatedAt: string
+  }> {
+    const rows = this.db
+      .prepare(
+        `SELECT scope, key, value_json, confidence, updated_at
+         FROM memory_facts
+         WHERE scope = ? AND confidence >= ?
+         ORDER BY confidence DESC, updated_at DESC
+         LIMIT ?`,
+      )
+      .all(scope, minConfidence, limit) as MemoryFactRow[]
+
+    return rows.map(row => ({
+      scope: row.scope,
+      key: row.key,
+      value: JSON.parse(row.value_json),
+      confidence: row.confidence,
+      updatedAt: row.updated_at,
+    }))
+  }
+
+  delete(scope: string, key: string): void {
+    this.db
+      .prepare(`DELETE FROM memory_facts WHERE scope = ? AND key = ?`)
+      .run(scope, key)
+  }
+
+  pruneLowConfidenceBefore(
+    scope: string,
+    minConfidenceToKeep: number,
+    cutoffIso: string,
+    keepKeys: string[] = [],
+  ): number {
+    if (keepKeys.length === 0) {
+      const result = this.db
+        .prepare(
+          `DELETE FROM memory_facts
+           WHERE scope = ?
+             AND confidence < ?
+             AND updated_at < ?`,
+        )
+        .run(scope, minConfidenceToKeep, cutoffIso)
+      return result.changes
+    }
+
+    const placeholders = keepKeys.map(() => '?').join(', ')
+    const result = this.db
+      .prepare(
+        `DELETE FROM memory_facts
+         WHERE scope = ?
+           AND confidence < ?
+           AND updated_at < ?
+           AND key NOT IN (${placeholders})`,
+      )
+      .run(scope, minConfidenceToKeep, cutoffIso, ...keepKeys)
+
+    return result.changes
+  }
 }

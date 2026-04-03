@@ -1,8 +1,11 @@
 node_modules/
 dist/
 coverage/
+reports/
+Claude-Code/
 *.log
 *.db
 *.db-shm
 *.db-wal
 .env
+.DS_Store

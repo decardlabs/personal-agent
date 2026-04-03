@@ -3,21 +3,28 @@ import { initializeDatabase } from '../storage/db.js'
 import { applyMigrations } from '../storage/migrate.js'
 import { SessionEventRepository } from '../storage/sessionEventRepository.js'
 import { runTurn } from './runTurn.js'
-import { getCurrentState } from './stateMachine.js'
 import { MemoryFactRepository } from '../storage/memoryFactRepository.js'
+import { PreferenceRepository } from '../storage/preferenceRepository.js'
 import { PersistentMemoryStore } from '../memory/persistentMemory.js'
 import { createMemoryCoordinator } from '../memory/memoryCoordinator.js'
+import { PreferenceStore } from '../memory/preferenceMemory.js'
 import { ToolPermissionRepository } from '../storage/toolPermissionRepository.js'
+
+function createMemory(db: ReturnType<typeof initializeDatabase>) {
+  const memoryRepository = new MemoryFactRepository(db)
+  const preferenceRepository = new PreferenceRepository(db)
+  return createMemoryCoordinator(
+    new PersistentMemoryStore(memoryRepository),
+    new PreferenceStore(preferenceRepository),
+  )
+}
 
 describe('runTurn', () => {
   it('runs echo flow and persists events in order', async () => {
     const db = initializeDatabase(':memory:')
     applyMigrations(db)
     const repository = new SessionEventRepository(db)
-    const memoryRepository = new MemoryFactRepository(db)
-    const memory = createMemoryCoordinator(
-      new PersistentMemoryStore(memoryRepository),
-    )
+    const memory = createMemory(db)
     const permissionRepository = new ToolPermissionRepository(db)
 
     const result = await runTurn(
@@ -37,17 +44,13 @@ describe('runTurn', () => {
       'tool_result_received',
       'turn_completed',
     ])
-    expect(getCurrentState()).toBe('done')
   })
 
   it('returns fallback response when no tool command is detected', async () => {
     const db = initializeDatabase(':memory:')
     applyMigrations(db)
     const repository = new SessionEventRepository(db)
-    const memoryRepository = new MemoryFactRepository(db)
-    const memory = createMemoryCoordinator(
-      new PersistentMemoryStore(memoryRepository),
-    )
+    const memory = createMemory(db)
     const permissionRepository = new ToolPermissionRepository(db)
 
     const result = await runTurn(
@@ -59,10 +62,39 @@ describe('runTurn', () => {
     )
     const events = repository.listByTurn(result.sessionId, result.turnId)
 
-    expect(result.response).toContain('I can run echo only in this MVP')
+    expect(result.response).toContain('I can run echo/search/read in this MVP')
     expect(events.map(event => event.eventType)).toEqual([
       'input_normalized',
       'reasoning_started',
+      'turn_completed',
+    ])
+  })
+
+  it('runs search flow and persists search tool events', async () => {
+    const db = initializeDatabase(':memory:')
+    applyMigrations(db)
+    const repository = new SessionEventRepository(db)
+    const memory = createMemory(db)
+    const permissionRepository = new ToolPermissionRepository(db)
+
+    const result = await runTurn(
+      'search runTurn',
+      repository,
+      memory,
+      permissionRepository,
+      'session-search',
+      {
+        searchToolRunner: args => ({ output: `src/agent/runTurn.ts:1: ${args.query}` }),
+      },
+    )
+    const events = repository.listByTurn(result.sessionId, result.turnId)
+
+    expect(result.response).toBe('Search results:\nsrc/agent/runTurn.ts:1: runTurn')
+    expect(events.map(event => event.eventType)).toEqual([
+      'input_normalized',
+      'reasoning_started',
+      'tool_called',
+      'tool_result_received',
       'turn_completed',
     ])
   })
@@ -71,10 +103,7 @@ describe('runTurn', () => {
     const db = initializeDatabase(':memory:')
     applyMigrations(db)
     const repository = new SessionEventRepository(db)
-    const memoryRepository = new MemoryFactRepository(db)
-    const memory = createMemoryCoordinator(
-      new PersistentMemoryStore(memoryRepository),
-    )
+    const memory = createMemory(db)
     const permissionRepository = new ToolPermissionRepository(db)
 
     await runTurn(
@@ -99,10 +128,7 @@ describe('runTurn', () => {
     const db = initializeDatabase(':memory:')
     applyMigrations(db)
     const repository = new SessionEventRepository(db)
-    const memoryRepository = new MemoryFactRepository(db)
-    const memory = createMemoryCoordinator(
-      new PersistentMemoryStore(memoryRepository),
-    )
+    const memory = createMemory(db)
     const permissionRepository = new ToolPermissionRepository(db)
 
     const result = await runTurn(
@@ -127,10 +153,7 @@ describe('runTurn', () => {
     const db = initializeDatabase(':memory:')
     applyMigrations(db)
     const repository = new SessionEventRepository(db)
-    const memoryRepository = new MemoryFactRepository(db)
-    const memory = createMemoryCoordinator(
-      new PersistentMemoryStore(memoryRepository),
-    )
+    const memory = createMemory(db)
     const permissionRepository = new ToolPermissionRepository(db)
 
     const first = await runTurn(
@@ -164,10 +187,7 @@ describe('runTurn', () => {
     const db = initializeDatabase(':memory:')
     applyMigrations(db)
     const repository = new SessionEventRepository(db)
-    const memoryRepository = new MemoryFactRepository(db)
-    const memory = createMemoryCoordinator(
-      new PersistentMemoryStore(memoryRepository),
-    )
+    const memory = createMemory(db)
     const permissionRepository = new ToolPermissionRepository(db)
 
     const result = await runTurn(
@@ -190,10 +210,7 @@ describe('runTurn', () => {
     const db = initializeDatabase(':memory:')
     applyMigrations(db)
     const repository = new SessionEventRepository(db)
-    const memoryRepository = new MemoryFactRepository(db)
-    const memory = createMemoryCoordinator(
-      new PersistentMemoryStore(memoryRepository),
-    )
+    const memory = createMemory(db)
     const permissionRepository = new ToolPermissionRepository(db)
 
     let attempts = 0
@@ -222,10 +239,7 @@ describe('runTurn', () => {
     const db = initializeDatabase(':memory:')
     applyMigrations(db)
     const repository = new SessionEventRepository(db)
-    const memoryRepository = new MemoryFactRepository(db)
-    const memory = createMemoryCoordinator(
-      new PersistentMemoryStore(memoryRepository),
-    )
+    const memory = createMemory(db)
     const permissionRepository = new ToolPermissionRepository(db)
 
     const alwaysThrows = () => { throw new Error('permanent failure') }
@@ -249,10 +263,7 @@ describe('runTurn', () => {
     const db = initializeDatabase(':memory:')
     applyMigrations(db)
     const repository = new SessionEventRepository(db)
-    const memoryRepository = new MemoryFactRepository(db)
-    const memory = createMemoryCoordinator(
-      new PersistentMemoryStore(memoryRepository),
-    )
+    const memory = createMemory(db)
     const permissionRepository = new ToolPermissionRepository(db)
 
     const result = await runTurn(
