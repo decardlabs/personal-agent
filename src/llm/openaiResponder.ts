@@ -1,4 +1,5 @@
 import type { HistoryEntry } from '../memory/sessionMemory.js'
+import type { LLMContextBundle } from '../memory/memoryCoordinator.js'
 
 type ChatMessage = {
   role: 'system' | 'user' | 'assistant'
@@ -35,19 +36,7 @@ export type LLMResponderArgs = {
   sessionId: string
   turnId: string
   rememberedLastEcho: string | null
-  context: {
-    cwd: string
-    platform: string
-    timestamp: string
-    preferences: Array<{ key: string; value: string }>
-  }
-  history: HistoryEntry[]
-  persistentFacts: Array<{
-    key: string
-    value: string
-    confidence: number
-    updatedAt: string
-  }>
+  contextBundle: LLMContextBundle
 }
 
 export function createOpenAIResponder(options: OpenAIResponderOptions): (args: LLMResponderArgs) => Promise<string> {
@@ -65,10 +54,11 @@ export function createOpenAIResponder(options: OpenAIResponderOptions): (args: L
   }
 
   return async (args: LLMResponderArgs): Promise<string> => {
-    const { input, context, history, rememberedLastEcho, persistentFacts } = args
+    const { input, contextBundle, rememberedLastEcho } = args
+    const { context, preferences, history, persistentFacts } = contextBundle
 
-    const prefLines = context.preferences.length > 0
-      ? context.preferences.map(p => `  ${p.key}: ${p.value}`).join('\n')
+    const prefLines = preferences.length > 0
+      ? preferences.map(p => `  ${p.key}: ${p.value}`).join('\n')
       : '  (none)'
 
     const systemContent = [

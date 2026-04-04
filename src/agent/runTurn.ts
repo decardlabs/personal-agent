@@ -13,7 +13,7 @@ import {
   detectGetPreferenceCommand,
   normalizeInput,
 } from './inputNormalizer.js'
-import type { MemoryCoordinator } from '../memory/memoryCoordinator.js'
+import type { MemoryCoordinator, LLMContextBundle } from '../memory/memoryCoordinator.js'
 import type { AutoConsolidationConfig } from '../memory/memoryCoordinator.js'
 import type { ManagedLLMConfig } from '../llm/modelManagement.js'
 import { evaluatePermission } from '../policies/permissionPolicy.js'
@@ -39,9 +39,7 @@ export type TurnOptions = {
     sessionId: string
     turnId: string
     rememberedLastEcho: string | null
-    context: ReturnType<MemoryCoordinator['getContextSnapshot']>
-    history: import('../memory/sessionMemory.js').HistoryEntry[]
-    persistentFacts: ReturnType<MemoryCoordinator['retrieveForLLM']>['persistentFacts']
+    contextBundle: LLMContextBundle
   }) => Promise<string>
   autoConsolidationConfig?: AutoConsolidationConfig
 }
@@ -105,19 +103,16 @@ export async function runTurn(
   )
 
   sm.transitionTo('reasoning')
-  const memoryBundle = memory.retrieveForLLM(sessionId)
-  const context = {
-    ...memoryBundle.context,
-    preferences: memoryBundle.preferences,
-  }
+  const contextBundle = memory.buildLLMContextBundle(sessionId)
+  const context = contextBundle.context
   const rememberedLastEcho = memory.persistent.get('last_echo_output')
   repository.save(
     createEvent(sessionId, turnId, 'reasoning_started', {
       normalizedInput,
       context,
       rememberedLastEcho,
-      historyTurns: memoryBundle.history.length,
-      persistentFacts: memoryBundle.persistentFacts.length,
+      historyTurns: contextBundle.history.length,
+      persistentFacts: contextBundle.persistentFacts.length,
     }),
   )
 
@@ -233,9 +228,7 @@ export async function runTurn(
         sessionId,
         turnId,
         rememberedLastEcho,
-        context,
-        history: memoryBundle.history,
-        persistentFacts: memoryBundle.persistentFacts,
+        contextBundle,
       })
       response = llmResponse.trim() || response
       repository.save(

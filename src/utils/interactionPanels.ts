@@ -3,6 +3,7 @@ import type { FeatureFlag } from '../featureFlags.js'
 import type { MemoryDiagnostics } from '../memory/memoryCoordinator.js'
 import type { ManagedLLMConfig } from '../llm/modelManagement.js'
 import type { UIStateSnapshot } from '../ui/state.js'
+import { getUIStatusSummary } from '../ui/selectors.js'
 
 export type StatusPanelInput = {
   sessionId: string
@@ -12,14 +13,6 @@ export type StatusPanelInput = {
   diagnostics: MemoryDiagnostics
   llmConfigSnapshot: ManagedLLMConfig | null
   uiState: UIStateSnapshot
-  latestTurnSummary: {
-    turnId: string
-    eventCount: number
-    outcome: 'completed' | 'cancelled' | 'incomplete'
-    toolName: string | null
-    usedLLM: boolean
-    responsePreview: string | null
-  } | null
 }
 
 export type TurnExplanation = {
@@ -122,21 +115,23 @@ export function buildLatestTurnSummary(turnEvents: TurnEvent[]): StatusPanelInpu
 
 export function formatStatusPanel(input: StatusPanelInput): string {
   const featureFlags = [...input.featureFlags]
+  const ui = getUIStatusSummary(input.uiState)
   const lines = [
     'Status',
     `- session id: ${input.sessionId}`,
     `- cwd: ${input.cwd}`,
-    `- ui mode: ${input.uiState.mode}`,
+    `- ui mode: ${ui.mode}`,
     `- permission mode: ${input.approveRisky ? 'auto-approve risky enabled' : 'explicit approval required'}`,
     `- feature flags: ${featureFlags.length > 0 ? featureFlags.join(', ') : '(none)'}`,
   ]
 
-  lines.push(`- last input: ${input.uiState.lastInput ?? '(none)'}`)
-  lines.push(`- notifications: ${input.uiState.notificationCount}`)
-  lines.push(`- last error: ${input.uiState.lastError ?? '(none)'}`)
-  if (input.uiState.lastCommand) {
-    lines.push(`- last command kind: ${input.uiState.lastCommand.kind}`)
-    lines.push(`- last command id: ${input.uiState.lastCommand.commandId ?? '(none)'}`)
+  lines.push(`- last input: ${ui.lastInput ?? '(none)'}`)
+  lines.push(`- notifications: ${ui.notifications.count}`)
+  lines.push(`- latest notification: ${ui.notifications.latestMessage ?? '(none)'}`)
+  lines.push(`- last error: ${ui.lastError ?? '(none)'}`)
+  if (ui.lastCommand) {
+    lines.push(`- last command kind: ${ui.lastCommand.kind}`)
+    lines.push(`- last command id: ${ui.lastCommand.commandId ?? '(none)'}`)
   }
 
   if (input.llmConfigSnapshot) {
@@ -151,14 +146,12 @@ export function formatStatusPanel(input: StatusPanelInput): string {
   lines.push(`- persistent facts: ${input.diagnostics.persistentFactCount}`)
   lines.push(`- avg fact confidence: ${input.diagnostics.averageFactConfidence.toFixed(2)}`)
   lines.push(`- memory action: ${input.diagnostics.recommendedAction}`)
+  lines.push(`- write decisions: ${input.diagnostics.writeDecisionsTotal} (accept: ${(input.diagnostics.writeDecisionAcceptanceRate * 100).toFixed(0)}%)`)
 
-  if (input.latestTurnSummary) {
-    lines.push(`- latest turn: ${input.latestTurnSummary.turnId}`)
-    lines.push(`- latest turn events: ${input.latestTurnSummary.eventCount}`)
-    lines.push(`- latest turn outcome: ${input.latestTurnSummary.outcome}`)
-    lines.push(`- latest turn tool: ${input.latestTurnSummary.toolName ?? '(none)'}`)
-    lines.push(`- latest turn llm: ${input.latestTurnSummary.usedLLM ? 'used' : 'not used'}`)
-    lines.push(`- latest response: ${input.latestTurnSummary.responsePreview ?? '(none)'}`)
+  if (ui.lastTurn) {
+    lines.push(`- latest turn: ${ui.lastTurn.turnId}`)
+    lines.push(`- latest turn events: ${ui.lastTurn.eventCount}`)
+    lines.push(`- latest response: ${ui.lastTurn.responsePreview}`)
   }
 
   return lines.join('\n')

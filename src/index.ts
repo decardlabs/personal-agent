@@ -157,6 +157,18 @@ function executeUtilityCommand(
       })
     }
 
+    if (utilityCommand.id === 'dashboard_compact' || utilityCommand.id === 'dashboard_detailed') {
+      return renderTerminalDashboard({
+        sessionId,
+        cwd: process.cwd(),
+        featureFlags: flags,
+        diagnostics: memory.getDiagnostics(sessionId),
+        llmConfigSnapshot,
+        uiState: uiState(),
+        mode: utilityCommand.id === 'dashboard_compact' ? 'compact' : 'detailed',
+      })
+    }
+
     if (utilityCommand.id === 'status') {
       const diagnostics = memory.getDiagnostics(sessionId)
       return formatStatusPanel({
@@ -273,6 +285,8 @@ function executeUtilityCommand(
         `- low-confidence fact count: ${diagnostics.lowConfidenceFactCount}`,
         `- average fact confidence: ${diagnostics.averageFactConfidence.toFixed(2)}`,
         `- recommended action: ${diagnostics.recommendedAction}`,
+        `- write decisions: ${diagnostics.writeDecisionsTotal} total (${diagnostics.writeDecisionsAllowed} allowed, ${diagnostics.writeDecisionsRejected} rejected)`,
+        `- write acceptance rate: ${(diagnostics.writeDecisionAcceptanceRate * 100).toFixed(1)}%`,
       ]
       if (isFeatureEnabled('verbose_diag', flags)) {
         const rankedFacts = memory.persistent.listRankedFacts().slice(0, 10)
