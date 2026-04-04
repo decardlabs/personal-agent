@@ -8,6 +8,16 @@ The format is based on Keep a Changelog and Semantic Versioning.
 
 ### Added
 
+### Changed
+
+### Fixed
+
+---
+
+## [0.2.0-beta.2] - 2026-04-04
+
+### Added
+
 - Interactive CLI mode in `src/index.ts` when no input args are provided.
 - `exit` and `quit` commands for leaving interactive mode.
 - Optional OpenAI responder integration for non-tool prompts via `OPENAI_API_KEY`.
@@ -36,8 +46,6 @@ The format is based on Keep a Changelog and Semantic Versioning.
 - Vitest discovery scope now targets project tests under `src/**/*.test.ts`, preventing local reference repositories from being included in test runs.
 
 ### Fixed
-
----
 
 ## [0.2.0-beta.1] - 2026-04-02
 
