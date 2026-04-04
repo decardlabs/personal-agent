@@ -101,6 +101,19 @@ When running in interactive mode, you can use these utility commands:
 - `/clear-history`: Clear the command history file.
 - `/memory`: Show a compact memory snapshot (preferences/history/facts/context).
 - `/dashboard`: Render the read-only terminal dashboard snapshot.
+- `/dashboard --compact`: Render a condensed dashboard view.
+- `/dashboard --detailed`: Render a fuller dashboard view with timing and model decision details.
+	- Dashboard header includes a priority-sorted summary strip with status tags and compact values (for example `gpt-4o-mini@preference`).
+	- Session symbols are graded: `+ACTIVE`, `-NONE`.
+	- View symbols are graded: `=STANDARD`, `~COMPACT`, `+DETAILED`.
+	- Model status symbols are graded: `+ON`, `~FALLBACK`, `-OFF`.
+	- Memory status symbols are graded: `.OK`, `!WARN`, `!!HOT`.
+	- Summary strip width is state-driven and weighted (memory/model wider than session/view, with extra boost in HOT/fallback scenarios) via configurable weight profiles.
+	- Summary strip ordering is handled by a dedicated priority policy (including HOT memory pinning).
+	- With `verbose_diag`, dashboard shows a strategy snapshot line and a structured `strategy_json` subline for tooling.
+	- In `--detailed` view with `verbose_diag`, an additional `strategy_json_verbose` line exposes full-key fields (`weightProfile`, `orderingPolicy`, `truncationPolicy`).
+	- Strategy JSON debug lines include schema version `strategy.v1` for stable tooling integration.
+	- When memory action reaches `consolidate`, summary strip pins memory first with `!!HOT` and recommends using `/dashboard --detailed`.
 - `/status`: Show runtime status for model, memory, permissions, feature flags, and latest turn summary.
 - `/diag`: Show memory diagnostics counters.
 - `/diag --json`: Export memory diagnostics as JSON (for CI/gating).
@@ -139,6 +152,8 @@ npm run dev
 > /clear-history                     # Clear history
 > /memory                            # Inspect memory snapshot
 > /dashboard                         # Render dashboard snapshot on demand
+> /dashboard --compact               # Render a condensed dashboard snapshot
+> /dashboard --detailed              # Render a fuller dashboard snapshot
 > /status                            # Inspect runtime status panel
 > /diag                              # View memory diagnostics
 > /diag --json                       # Export diagnostics in JSON
@@ -167,6 +182,53 @@ export MEMORY_AUTO_CONSOLIDATE_MIN_TURNS=10
 export MEMORY_AUTO_CONSOLIDATE_MIN_HOURS=12
 npm run dev
 ```
+
+### Session history window standardization
+
+The assistant maintains a standardized session history window using a **two-layer gating strategy**:
+
+**Storage layer**: `SessionMemoryStore` enforces a fixed-size circular buffer
+- Default window: 10 entries (last 10 turns)
+- Configured per session at instantiation time via `historyWindowSize` parameter
+- When limit is exceeded, oldest entries are automatically evicted (FIFO)
+- Prevents unbounded memory growth across long sessions
+
+**Retrieval layer**: `MemoryCoordinator.retrieveForLLM()` applies optional secondary limiting
+- Default retrieval limit: 10 entries (aligns with storage window)
+- Configurable per call via `options.historyLimit` parameter
+- Enables temporary expansion (e.g., for fuller context injection) when needed
+- Edge case: `historyLimit: 0` returns empty history (no entries sent to LLM)
+
+**Example: Two-layer window in action**
+
+```typescript
+// Storage enforces max 10 entries
+const coordinator = createMemoryCoordinator(persistent, preferences)
+
+// Push 20 entries => storage keeps only last 10
+for (let i = 0; i < 20; i++) {
+  coordinator.session.pushHistory(sessionId, { input: `q-${i}`, response: `r-${i}` })
+}
+
+// Default retrieval: last 10 entries
+const bundle1 = coordinator.retrieveForLLM(sessionId)
+console.log(bundle1.history.length) // 10
+
+// Retrieve only last 3 entries
+const bundle2 = coordinator.retrieveForLLM(sessionId, { historyLimit: 3 })
+console.log(bundle2.history.length) // 3
+
+// Retrieve zero entries
+const bundle3 = coordinator.retrieveForLLM(sessionId, { historyLimit: 0 })
+console.log(bundle3.history.length) // 0
+```
+
+**Design rationale**
+
+- **Storage window**: Guarantees predictable mem usage (constant space per session)
+- **Retrieval limit**: Allows LLM context tuning without changing stored history
+- **Isolation**: Each session maintains its own independent window
+- **Ordering**: History maintains insertion order (oldest to newest, FIFO eviction)
 
 ### Optional UI feature flags
 
@@ -205,6 +267,115 @@ export OPENAI_MODEL="gpt-4o-mini"
 export OPENAI_BASE_URL="https://api.openai.com/v1"
 npm run dev
 ```
+
+### Unified LLM context injection
+
+The assistant uses a **unified context bundle structure** for LLM integration, combining all available context into a single `LLMContextBundle` object:
+
+```typescript
+type LLMContextBundle = {
+  context: ContextSnapshot              // Project metadata (cwd, platform, timestamp)
+  preferences: Array<{key, value}>      // User stored preferences
+  history: HistoryEntry[]               // Recent conversation history (windowed)
+  persistentFacts: Array<{key, value, confidence, updatedAt}>  // Ranked facts
+}
+```
+
+**Injection flow:**
+1. `runTurn()` calls `memory.buildLLMContextBundle(sessionId)` to assemble all context
+2. Bundle is passed to injected `llmResponder` along with `input`, `sessionId`, `turnId`, `rememberedLastEcho`
+3. OpenAI responder (or custom responder) extracts context, preferences, history, facts and constructs system prompt
+4. LLM receives rich context in single structured unit
+
+**Benefits:**
+- **Clarity**: Single context object replaces scattered parameters
+- **Consistency**: All LLM calls receive the same context shape
+- **Flexibility**: Custom responders can easily access all needed context
+- **Testing**: Single bundle reduces mock complexity in unit tests
+
+**Example LLM responder implementation:**
+
+```typescript
+const openaiResponder = createOpenAIResponder(options)
+const result = await runTurn(input, repository, memory, permissionRepo, sessionId, {
+  llmResponder: async (args) => {
+    const { input, contextBundle, rememberedLastEcho } = args
+    const { context, preferences, history, persistentFacts } = contextBundle
+    
+    // Build system prompt from context bundle
+    const systemPrompt = buildPrompt(context, preferences, persistentFacts)
+    
+    // Inject history as conversation turns
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      ...history.flatMap(h => [
+        { role: 'user', content: h.input },
+        { role: 'assistant', content: h.response },
+      ]),
+      { role: 'user', content: input },
+    ]
+    
+    return openaiResponder({ /* OpenAI API call */ })
+  },
+})
+```
+
+### Confidence-based memory write-back hardening
+
+The assistant implements **write-decision gating** for persistent memory to prevent low-confidence facts from corrupting the knowledge base:
+
+**Write-decision policy:**
+- Each persistent write is evaluated against minimum confidence thresholds
+- Key-specific thresholds (e.g., `last_echo_output` requires 0.7 confidence)
+- Default threshold for unknown keys: 0.5 confidence
+- Bookkeeping keys (prefix `__`) bypass confidence checks
+
+**Audit trail:**
+- Every write decision is recorded: allowed or rejected, with reason
+- Tracks: timestamp, key, value, proposed confidence, decision result
+- Accessible via `memory.getWriteAuditTrail()` for inspection
+- Bounded to 1000 entries to prevent memory bloat
+
+**Write-decision observability in diagnostics:**
+- `/diag` outputs write-decision counts (total / allowed / rejected)
+- `/diag` outputs write acceptance rate as a percentage
+- `/status` panel shows write-decision summary (total + acceptance rate)
+- Dashboard memory panel shows write-decision row in detailed mode
+- New fields on `MemoryDiagnostics`:
+  - `writeDecisionsTotal` / `writeDecisionsAllowed` / `writeDecisionsRejected`
+  - `writeDecisionAcceptanceRate` (0–1, 1.0 = perfect when no decisions made)
+
+**Example write-decision flow:**
+
+```typescript
+const coordinator = createMemoryCoordinator(persistent, preferences)
+
+// Evaluate before writing
+const decision = coordinator.evaluatePersistentWrite(
+  'user_inference',      // key
+  'user prefers_async',  // value
+  0.65,                  // confidence (0-1)
+)
+
+if (decision.allowed) {
+  // High confidence: proceed with write
+  persistent.set('user_inference', 'user prefers_async', 0.65)
+} else {
+  // Low confidence: reject or log
+  console.log(`Write rejected: ${decision.reason}`)
+  
+  // Inspect audit trail
+  const trail = coordinator.getWriteAuditTrail()
+  const recentDecisions = trail.getRecent(5)
+  const keyHistory = trail.getByKey('user_inference', 10)
+}
+```
+
+**Safety guarantees:**
+- Prevents accumulation of uncertain facts
+- Traces all write decisions for post-hoc analysis
+- Supports consolidation safety inspection
+- Enables confidence monitoring for memory health
 
 ### Project structure
 

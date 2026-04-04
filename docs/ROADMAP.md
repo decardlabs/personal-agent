@@ -34,7 +34,7 @@ Build a reliable personal intelligent work assistant based on a CLI agent archit
 - M1 Foundation: Completed
 - M2 MVP Closed Loop: Completed (echo/search tools, layered memory, permission gate)
 - M3 Quality and Evaluation: Completed (replay metrics, mixed permission strategy, CI gate + artifact upload)
-- M4 Personalization: Starting
+- M4 Personalization: In progress (Phase A items 1-6 complete: preference chain, history window, unified LLM context bundle, write policy, diagnostics observability, replay expansion)
 
 ## M4 Backlog (target 2026-05 → 2026-06)
 

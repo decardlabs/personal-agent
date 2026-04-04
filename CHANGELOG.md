@@ -23,6 +23,8 @@ The format is based on Keep a Changelog and Semantic Versioning.
 - Permission risk detection upgraded to mixed strategy: command-structure analysis first, regex fallback second.
 - `src/policies/permissionPolicy.test.ts` unit test suite for the permission evaluator.
 - `PA_LOG_LEVEL` environment variable controls log verbosity (default: `info`).
+- Replay coverage expanded with preference round-trip scenarios (`set/get preference`) and LLM-context confidence-filtering validation.
+- Replay runner supports deterministic seeded persistent facts and a mock LLM responder mode for context-level assertions.
 
 ### Changed
 
@@ -31,6 +33,7 @@ The format is based on Keep a Changelog and Semantic Versioning.
 - Fallback response updated to reflect both echo and search command availability.
 - CI quality gate now covers build, unit tests, replay regression, and replay JSON report generation.
 - ROADMAP current focus updated to reflect M3 completion and M4 start.
+- Vitest discovery scope now targets project tests under `src/**/*.test.ts`, preventing local reference repositories from being included in test runs.
 
 ### Fixed
 

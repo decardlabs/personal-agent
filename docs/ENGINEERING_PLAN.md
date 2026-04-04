@@ -136,6 +136,21 @@ Acceptance:
 9. Enrich `llmResponder` call with context snapshot + persistent memory facts + session history.
 10. Write back confident LLM results to `PersistentMemoryStore` (threshold: confidence ≥ 0.8).
 
+## Progress Update — 2026-04-04 (Phase A)
+
+Completed:
+
+1. Preference command chain consistency validated end-to-end.
+2. Session history window behavior standardized and edge-cases covered (including `historyLimit=0`).
+3. LLM context injection unified through `buildLLMContextBundle`.
+4. Confidence-based persistent-memory write policy and audit trail implemented.
+5. Write-decision observability added to diagnostics, `/diag`, `/status`, and dashboard memory panel.
+6. Replay suite expanded with preference round-trip and confidence-filtered LLM-context scenarios.
+
+Completed in this update:
+
+1. Documentation synchronization and release-note alignment for the above changes.
+
 ## Definition of Done
 
 - Code merged with tests and docs updates.

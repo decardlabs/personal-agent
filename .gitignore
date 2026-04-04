@@ -3,6 +3,8 @@ dist/
 coverage/
 reports/
 Claude-Code/
+deer-flow/
+openclaw/
 *.log
 *.db
 *.db-shm
