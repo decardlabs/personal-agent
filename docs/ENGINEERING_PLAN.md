@@ -151,6 +151,28 @@ Completed in this update:
 
 1. Documentation synchronization and release-note alignment for the above changes.
 
+## Design-to-Code Mapping (v1.0-Final)
+
+Source design baseline: `personal-assistant-design-final.md`.
+
+| Design area | Current implementation | Status | Next step |
+|---|---|---|---|
+| 对话交互层（会话/意图/上下文） | `src/agent/runTurn.ts`, `src/agent/inputNormalizer.ts`, `src/memory/memoryCoordinator.ts` | Partial | Add confidence-based intent fallback and explicit clarification prompts for low-confidence inputs. |
+| 工具调用体系（注册/执行/错误处理） | `src/tools/*`, `src/commands/utilityRegistry.ts`, `src/policies/permissionPolicy.ts` | Partial | Add tool metadata normalization (timeout/retry/sandbox policy) and unified execution contract. |
+| 记忆系统集成（检索/写入/审计） | `src/memory/*`, `src/storage/memoryFactRepository.ts` | Strong | Extend from current layered memory to explicit typed memory families (episodic/semantic/procedural). |
+| 任务执行引擎（DAG/状态机/检查点） | `src/agent/stateMachine.ts` (turn-level), replay harness in `src/testing/*` | Early | Introduce task-level state machine and checkpoint persistence for resumable long-running tasks. |
+| 个性化与学习（画像/偏好学习） | `PreferenceRepository` + set/get preference path (`src/memory/preferenceMemory.ts`, `src/agent/inputNormalizer.ts`) | Early | Add preference learning signals with decay/rollback and confidence audit trail for profile updates. |
+| 安全与授权（L0-L4/风险引擎） | `src/policies/permissionPolicy.ts`, `src/storage/toolPermissionRepository.ts` | Partial | Expand risk categories and map to explicit L0-L4 action classes instead of command-pattern-only rules. |
+| 成本控制（预算/路由/缓存） | Model selection policy in `src/llm/modelManagement.ts` | Early | Add per-session token budget ledger + soft/hard limits + diagnostics exposure. |
+| TUI/UX（任务树/状态面板） | Dashboard + status panels in `src/ui/renderers/*`, `src/utils/interactionPanels.ts` | Partial | Add task-tree progress view and interrupt/resume UX for multi-step execution. |
+| 初始化与生命周期（首启/目录/迁移） | DB init/migration in `src/storage/db.ts`, `src/storage/migrate.ts`; CLI entry in `src/index.ts` | Partial | Add first-run setup flow and persistent runtime home layout bootstrap checks. |
+
+Execution rule:
+
+1. Prioritize rows marked `Early` that unblock reliability or safety.
+2. Land each row as independently testable slices with replay coverage.
+3. Keep roadmap and changelog synchronized after each row reaches `Partial` or `Strong`.
+
 ## Definition of Done
 
 - Code merged with tests and docs updates.

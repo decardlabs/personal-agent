@@ -18,6 +18,7 @@ import type { AutoConsolidationConfig } from '../memory/memoryCoordinator.js'
 import type { ManagedLLMConfig } from '../llm/modelManagement.js'
 import { evaluatePermission } from '../policies/permissionPolicy.js'
 import { ToolPermissionRepository } from '../storage/toolPermissionRepository.js'
+import type { TaskState } from './taskStateMachine.js'
 
 export type TurnResult = {
   sessionId: string
@@ -28,6 +29,7 @@ export type TurnResult = {
 export type TurnOptions = {
   approveRisky?: boolean
   permissionScope?: string
+  taskId?: string
   turnTimeoutMs?: number
   maxToolRetries?: number
   echoToolRunner?: (args: { content: string }) => { output: string }
@@ -41,6 +43,15 @@ export type TurnOptions = {
     rememberedLastEcho: string | null
     contextBundle: LLMContextBundle
   }) => Promise<string>
+  taskCheckpointWriter?: (checkpoint: {
+    taskId: string
+    sessionId: string
+    turnId: string
+    status: TaskState
+    stepIndex: number
+    payload: Record<string, unknown>
+    createdAt: string
+  }) => void
   autoConsolidationConfig?: AutoConsolidationConfig
 }
 
@@ -91,6 +102,25 @@ export async function runTurn(
   const turnStartedAt = Date.now()
   const permissionScope = options.permissionScope ?? 'project'
   const sm = createStateMachine()
+  const writeTaskCheckpoint = (
+    status: TaskState,
+    stepIndex: number,
+    payload: Record<string, unknown>,
+  ): void => {
+    if (!options.taskCheckpointWriter || !options.taskId) {
+      return
+    }
+
+    options.taskCheckpointWriter({
+      taskId: options.taskId,
+      sessionId,
+      turnId,
+      status,
+      stepIndex,
+      payload,
+      createdAt: new Date().toISOString(),
+    })
+  }
 
   sm.transitionTo('normalizing_input')
   const normalizedInput = normalizeInput(input)
@@ -249,6 +279,11 @@ export async function runTurn(
     const elapsedMs = Date.now() - turnStartedAt
     if (options.turnTimeoutMs !== undefined && elapsedMs >= options.turnTimeoutMs) {
       sm.transitionTo('done')
+      writeTaskCheckpoint('timeout', 1, {
+        phase: 'before_tool_execution',
+        toolName: resolvedToolName,
+        elapsedMs,
+      })
       repository.save(
         createEvent(sessionId, turnId, 'tool_timeout', {
           toolName: resolvedToolName,
@@ -264,6 +299,10 @@ export async function runTurn(
     }
 
     sm.transitionTo('executing_tool')
+    writeTaskCheckpoint('running', 1, {
+      phase: 'before_tool_execution',
+      toolName: resolvedToolName,
+    })
     repository.save(
       createEvent(sessionId, turnId, 'tool_called', {
         toolName: resolvedToolName,
@@ -309,6 +348,11 @@ export async function runTurn(
       }
     } catch (err) {
       sm.transitionTo('done')
+      writeTaskCheckpoint('failed', 2, {
+        phase: 'tool_execution_failed',
+        toolName: resolvedToolName,
+        error: String(err),
+      })
       repository.save(
         createEvent(sessionId, turnId, 'tool_error', {
           toolName: resolvedToolName,
@@ -333,6 +377,11 @@ export async function runTurn(
         output: toolResult.output,
       }),
     )
+    writeTaskCheckpoint('completed', 2, {
+      phase: 'after_tool_execution',
+      toolName: resolvedToolName,
+      outputPreview: toolResult.output.slice(0, 120),
+    })
 
     sm.transitionTo('feeding_back_result')
     response = echoPayload

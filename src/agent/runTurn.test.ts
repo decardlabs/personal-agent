@@ -388,4 +388,72 @@ describe('runTurn', () => {
     const events = repository.listByTurn(result.sessionId, result.turnId)
     expect(events.some(e => e.eventType === 'memory_auto_consolidation_skipped')).toBe(true)
   })
+
+  it('writes task checkpoints before and after successful tool execution', async () => {
+    const db = initializeDatabase(':memory:')
+    applyMigrations(db)
+    const repository = new SessionEventRepository(db)
+    const memory = createMemory(db)
+    const permissionRepository = new ToolPermissionRepository(db)
+    const checkpoints: Array<{ status: string; stepIndex: number; phase: unknown }> = []
+
+    await runTurn(
+      'echo checkpoint-success',
+      repository,
+      memory,
+      permissionRepository,
+      'session-checkpoint-success',
+      {
+        taskId: 'task-success-1',
+        taskCheckpointWriter: checkpoint => {
+          checkpoints.push({
+            status: checkpoint.status,
+            stepIndex: checkpoint.stepIndex,
+            phase: checkpoint.payload['phase'],
+          })
+        },
+      },
+    )
+
+    expect(checkpoints).toEqual([
+      { status: 'running', stepIndex: 1, phase: 'before_tool_execution' },
+      { status: 'completed', stepIndex: 2, phase: 'after_tool_execution' },
+    ])
+  })
+
+  it('writes failed task checkpoint when tool execution fails', async () => {
+    const db = initializeDatabase(':memory:')
+    applyMigrations(db)
+    const repository = new SessionEventRepository(db)
+    const memory = createMemory(db)
+    const permissionRepository = new ToolPermissionRepository(db)
+    const checkpoints: Array<{ status: string; stepIndex: number; phase: unknown }> = []
+
+    await runTurn(
+      'echo checkpoint-fail',
+      repository,
+      memory,
+      permissionRepository,
+      'session-checkpoint-fail',
+      {
+        taskId: 'task-fail-1',
+        maxToolRetries: 0,
+        echoToolRunner: () => {
+          throw new Error('forced failure')
+        },
+        taskCheckpointWriter: checkpoint => {
+          checkpoints.push({
+            status: checkpoint.status,
+            stepIndex: checkpoint.stepIndex,
+            phase: checkpoint.payload['phase'],
+          })
+        },
+      },
+    )
+
+    expect(checkpoints).toEqual([
+      { status: 'running', stepIndex: 1, phase: 'before_tool_execution' },
+      { status: 'failed', stepIndex: 2, phase: 'tool_execution_failed' },
+    ])
+  })
 })
