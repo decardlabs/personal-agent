@@ -6,12 +6,20 @@ export type ReplayStep = {
   turnTimeoutMs?: number
   mockSearchOutput?: string
   mockReadFileOutput?: string
+  mockLlmResponderMode?: 'facts_summary'
   memoryIntent?: 'required' | 'not_required' | 'neutral'
+}
+
+export type ReplayPersistentFactSeed = {
+  key: string
+  value: string
+  confidence: number
 }
 
 export type ReplayCase = {
   name: string
   sessionId: string
+  seedPersistentFacts?: ReplayPersistentFactSeed[]
   steps: ReplayStep[]
   expectedResponses: string[]
   expectedEventTypes?: TurnEventType[][]
@@ -129,6 +137,42 @@ export const replayCases: ReplayCase[] = [
       'reasoning_started',
       'tool_called',
       'tool_result_received',
+      'turn_completed',
+    ]],
+  },
+  {
+    name: 'set and get preference across turns',
+    sessionId: 'replay-session-13',
+    steps: [
+      { input: 'set preference theme dark', memoryIntent: 'not_required' },
+      { input: 'get preference theme', memoryIntent: 'not_required' },
+    ],
+    expectedResponses: ['Preference set: theme = dark', 'Preference theme = dark'],
+  },
+  {
+    name: 'get preference when key is missing',
+    sessionId: 'replay-session-14',
+    steps: [{ input: 'get preference timezone', memoryIntent: 'not_required' }],
+    expectedResponses: ["Preference 'timezone' not set."],
+  },
+  {
+    name: 'llm context excludes low-confidence persistent facts by default',
+    sessionId: 'replay-session-15',
+    seedPersistentFacts: [
+      { key: 'high_fact', value: 'safe', confidence: 0.9 },
+      { key: 'low_fact', value: 'noisy', confidence: 0.2 },
+    ],
+    steps: [{
+      input: 'summarize memory facts',
+      mockLlmResponderMode: 'facts_summary',
+      memoryIntent: 'required',
+    }],
+    expectedResponses: ['LLM facts: high_fact'],
+    expectedEventTypes: [[
+      'input_normalized',
+      'reasoning_started',
+      'llm_called',
+      'llm_result_received',
       'turn_completed',
     ]],
   },

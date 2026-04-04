@@ -266,6 +266,10 @@ export async function runReplayCase(testCase: ReplayCase): Promise<ReplayCaseRes
     new PreferenceStore(preferenceRepository),
   )
 
+  for (const seed of testCase.seedPersistentFacts ?? []) {
+    memory.persistent.set(seed.key, seed.value, seed.confidence)
+  }
+
   const stepResults: ReplayStepResult[] = []
 
   for (const step of testCase.steps) {
@@ -275,6 +279,21 @@ export async function runReplayCase(testCase: ReplayCase): Promise<ReplayCaseRes
 
     const readFileToolRunner = step.mockReadFileOutput
       ? () => ({ output: step.mockReadFileOutput as string })
+      : undefined
+
+    const llmResponder = step.mockLlmResponderMode
+      ? async (args: {
+        contextBundle: {
+          persistentFacts: Array<{ key: string }>
+        }
+      }): Promise<string> => {
+        if (step.mockLlmResponderMode === 'facts_summary') {
+          const keys = args.contextBundle.persistentFacts.map(fact => fact.key)
+          return `LLM facts: ${keys.length > 0 ? keys.join(',') : '(none)'}`
+        }
+
+        return 'LLM mock responder unavailable.'
+      }
       : undefined
 
     const turn = await runTurn(
@@ -288,6 +307,7 @@ export async function runReplayCase(testCase: ReplayCase): Promise<ReplayCaseRes
         turnTimeoutMs: step.turnTimeoutMs,
         searchToolRunner,
         readFileToolRunner,
+        llmResponder,
       },
     )
 

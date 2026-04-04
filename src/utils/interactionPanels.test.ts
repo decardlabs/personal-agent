@@ -32,6 +32,10 @@ describe('interactionPanels', () => {
         lowConfidenceFactCount: 1,
         averageFactConfidence: 0.85,
         recommendedAction: 'review',
+        writeDecisionsTotal: 10,
+        writeDecisionsAllowed: 8,
+        writeDecisionsRejected: 2,
+        writeDecisionAcceptanceRate: 0.8,
       },
       uiState: {
         mode: 'awaiting_input',
@@ -43,10 +47,20 @@ describe('interactionPanels', () => {
           commandId: 'status',
           createdAt: '2026-04-03T00:00:00.000Z',
         },
-        lastTurn: null,
+        lastTurn: {
+          turnId: 'turn-1',
+          responsePreview: 'LLM says: project is healthy',
+          eventCount: 6,
+        },
         lastError: null,
         notificationCount: 2,
-        notifications: [],
+        notifications: [
+          {
+            level: 'success',
+            message: 'Status ready',
+            createdAt: '2026-04-03T00:00:01.000Z',
+          },
+        ],
       },
       llmConfigSnapshot: {
         model: 'gpt-4o-mini',
@@ -58,20 +72,13 @@ describe('interactionPanels', () => {
         maxOutputTokens: null,
         decisionLog: ['model: user preference'],
       },
-      latestTurnSummary: {
-        turnId: 'turn-1',
-        eventCount: 6,
-        outcome: 'completed',
-        toolName: null,
-        usedLLM: true,
-        responsePreview: 'LLM says: project is healthy',
-      },
     })
 
     expect(output).toContain('Status')
     expect(output).toContain('ui mode: awaiting_input')
     expect(output).toContain('permission mode: auto-approve risky enabled')
     expect(output).toContain('last command id: status')
+    expect(output).toContain('latest notification: Status ready')
     expect(output).toContain('feature flags: verbose_diag')
     expect(output).toContain('llm: enabled (gpt-4o-mini via preference)')
     expect(output).toContain('memory action: review')
