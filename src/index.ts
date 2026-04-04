@@ -12,6 +12,7 @@ import { PersistentMemoryStore } from './memory/persistentMemory.js'
 import { createMemoryCoordinator } from './memory/memoryCoordinator.js'
 import { PreferenceStore } from './memory/preferenceMemory.js'
 import { ToolPermissionRepository } from './storage/toolPermissionRepository.js'
+import { TaskCheckpointRepository } from './storage/taskCheckpointRepository.js'
 import { createOpenAIResponder } from './llm/openaiResponder.js'
 import {
   applyModelPreferenceMigrations,
@@ -399,6 +400,7 @@ async function main(): Promise<void> {
   const preferenceMemory = new PreferenceStore(preferenceRepository)
   const memory = createMemoryCoordinator(persistentMemory, preferenceMemory)
   const permissionRepository = new ToolPermissionRepository(db)
+  const taskCheckpointRepository = new TaskCheckpointRepository(db)
 
   const modelMigration = applyModelPreferenceMigrations(memory.preferences)
   if (modelMigration.applied) {
@@ -462,8 +464,28 @@ async function main(): Promise<void> {
       minStaleFacts: parseNumberEnv(process.env.MEMORY_AUTO_CONSOLIDATE_MIN_STALE_FACTS, 3),
       minLowConfidenceFacts: parseNumberEnv(process.env.MEMORY_AUTO_CONSOLIDATE_MIN_LOW_CONF_FACTS, 5),
     }
+    const taskId = `task-${randomUUID()}`
 
-    const base: TurnOptions = { approveRisky, autoConsolidationConfig }
+    const base: TurnOptions = {
+      approveRisky,
+      autoConsolidationConfig,
+      taskId,
+      taskCheckpointWriter: checkpoint => {
+        taskCheckpointRepository.upsertTask(
+          checkpoint.taskId,
+          checkpoint.sessionId,
+          checkpoint.status,
+          checkpoint.createdAt,
+        )
+        taskCheckpointRepository.saveCheckpoint({
+          taskId: checkpoint.taskId,
+          status: checkpoint.status,
+          stepIndex: checkpoint.stepIndex,
+          payload: checkpoint.payload,
+          createdAt: checkpoint.createdAt,
+        })
+      },
+    }
     const managed = buildManagedLLMConfig()
     if (managed && llmApiKey) {
       const responderOptions: {
