@@ -21,6 +21,7 @@ export type UtilityCommandSpec = {
   | 'task'
   | 'task_latest'
   | 'task_checkpoints'
+  | 'task_resume'
   | 'consolidate_memory'
   | 'consolidate_memory_auto'
   | 'exit'
@@ -155,6 +156,14 @@ const UTILITY_COMMAND_REGISTRY: UtilityCommandSpec[] = [
     description: 'Show checkpoints for a specific task id',
     matchMode: 'prefix',
     assistTrigger: '/task checkpoints',
+  },
+  {
+    command: '/task resume <taskId>',
+    id: 'task_resume',
+    trigger: '/task resume',
+    description: 'Resume task execution from the latest checkpoint',
+    matchMode: 'prefix',
+    assistTrigger: '/task resume',
   },
   {
     command: '/consolidate-memory',

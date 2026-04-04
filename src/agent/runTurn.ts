@@ -282,6 +282,7 @@ export async function runTurn(
       writeTaskCheckpoint('timeout', 1, {
         phase: 'before_tool_execution',
         toolName: resolvedToolName,
+        normalizedInput,
         elapsedMs,
       })
       repository.save(
@@ -302,6 +303,7 @@ export async function runTurn(
     writeTaskCheckpoint('running', 1, {
       phase: 'before_tool_execution',
       toolName: resolvedToolName,
+      normalizedInput,
     })
     repository.save(
       createEvent(sessionId, turnId, 'tool_called', {
@@ -351,6 +353,7 @@ export async function runTurn(
       writeTaskCheckpoint('failed', 2, {
         phase: 'tool_execution_failed',
         toolName: resolvedToolName,
+        normalizedInput,
         error: String(err),
       })
       repository.save(
@@ -380,6 +383,7 @@ export async function runTurn(
     writeTaskCheckpoint('completed', 2, {
       phase: 'after_tool_execution',
       toolName: resolvedToolName,
+      normalizedInput,
       outputPreview: toolResult.output.slice(0, 120),
     })
 

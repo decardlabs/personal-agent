@@ -395,7 +395,7 @@ describe('runTurn', () => {
     const repository = new SessionEventRepository(db)
     const memory = createMemory(db)
     const permissionRepository = new ToolPermissionRepository(db)
-    const checkpoints: Array<{ status: string; stepIndex: number; phase: unknown }> = []
+    const checkpoints: Array<{ status: string; stepIndex: number; phase: unknown; normalizedInput: unknown }> = []
 
     await runTurn(
       'echo checkpoint-success',
@@ -410,14 +410,15 @@ describe('runTurn', () => {
             status: checkpoint.status,
             stepIndex: checkpoint.stepIndex,
             phase: checkpoint.payload['phase'],
+            normalizedInput: checkpoint.payload['normalizedInput'],
           })
         },
       },
     )
 
     expect(checkpoints).toEqual([
-      { status: 'running', stepIndex: 1, phase: 'before_tool_execution' },
-      { status: 'completed', stepIndex: 2, phase: 'after_tool_execution' },
+      { status: 'running', stepIndex: 1, phase: 'before_tool_execution', normalizedInput: 'echo checkpoint-success' },
+      { status: 'completed', stepIndex: 2, phase: 'after_tool_execution', normalizedInput: 'echo checkpoint-success' },
     ])
   })
 

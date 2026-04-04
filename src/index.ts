@@ -128,7 +128,7 @@ function formatResponse(response: string): string {
   return response
 }
 
-function executeUtilityCommand(
+async function executeUtilityCommand(
   command: string,
   sessionId: string,
   repository: SessionEventRepository,
@@ -137,8 +137,10 @@ function executeUtilityCommand(
   llmConfigSnapshot: ReturnType<typeof resolveManagedLLMConfig> | null,
   uiState: ReturnType<typeof createUIStateStore>['getState'],
   approveRisky: boolean,
+  buildTurnOptions: () => TurnOptions,
+  permissionRepository: ToolPermissionRepository,
   flags: ReadonlySet<FeatureFlag> = new Set(),
-): string | null {
+): Promise<string | null> {
   const raw = command.trim()
   const normalized = command.trim().toLowerCase()
   const utilityCommand = findUtilityCommandByInput(normalized)
@@ -408,6 +410,53 @@ function executeUtilityCommand(
       return lines.join('\n')
     }
 
+    if (utilityCommand.id === 'task_resume') {
+      const taskId = raw.slice(utilityCommand.trigger.length).trim()
+      if (!taskId) {
+        return colorWarn('Usage: /task resume <taskId>')
+      }
+
+      const latestCheckpoint = taskCheckpointRepository.getLatestCheckpoint(taskId)
+      if (!latestCheckpoint) {
+        return colorInfo(`No checkpoints found for task '${taskId}'.`)
+      }
+
+      if (latestCheckpoint.status === 'completed') {
+        return colorInfo(`Task '${taskId}' is already completed.`)
+      }
+
+      const payload = (
+        latestCheckpoint.payload
+        && typeof latestCheckpoint.payload === 'object'
+      ) ? latestCheckpoint.payload as Record<string, unknown> : {}
+
+      const resumeInput = typeof payload['normalizedInput'] === 'string'
+        ? payload['normalizedInput']
+        : null
+
+      if (!resumeInput) {
+        return colorError(`Task '${taskId}' latest checkpoint does not contain resumable input.`)
+      }
+
+      const resumeOptions = buildTurnOptions()
+      resumeOptions.taskId = taskId
+      const resumed = await runTurn(
+        resumeInput,
+        repository,
+        memory,
+        permissionRepository,
+        sessionId,
+        resumeOptions,
+      )
+
+      return [
+        colorSuccess(`Task '${taskId}' resumed from latest checkpoint.`),
+        `- checkpoint status: ${latestCheckpoint.status}`,
+        `- replayed input: ${resumeInput}`,
+        `- result: ${resumed.response}`,
+      ].join('\n')
+    }
+
     if (utilityCommand.id === 'consolidate_memory') {
       const result = memory.persistent.consolidate()
       return colorSuccess(`Memory consolidation complete. Removed ${result.removedCount} stale low-confidence facts.`)
@@ -582,7 +631,19 @@ async function main(): Promise<void> {
     initializeOneshotUI(uiState, parsedInput)
     renderDashboardIfEnabled('oneshot', memory, buildManagedLLMConfig(), uiState, featureFlags)
     const matchedUtility = findUtilityCommandByInput(parsedInput)
-    const utilityOutput = executeUtilityCommand(parsedInput, 'oneshot', repository, taskCheckpointRepository, memory, buildManagedLLMConfig(), uiState.getState, approveRisky, featureFlags)
+    const utilityOutput = await executeUtilityCommand(
+      parsedInput,
+      'oneshot',
+      repository,
+      taskCheckpointRepository,
+      memory,
+      buildManagedLLMConfig(),
+      uiState.getState,
+      approveRisky,
+      buildTurnOptions,
+      permissionRepository,
+      featureFlags,
+    )
     if (utilityOutput !== null) {
       completeUtilityExecution(uiState, matchedUtility, parsedInput, utilityOutput, 'stopped')
       renderDashboardIfEnabled('oneshot', memory, buildManagedLLMConfig(), uiState, featureFlags)
@@ -650,7 +711,19 @@ async function main(): Promise<void> {
     }
 
     beginUtilityExecution(uiState)
-    const utilityOutput = executeUtilityCommand(line, sessionId, repository, taskCheckpointRepository, memory, buildManagedLLMConfig(), uiState.getState, approveRisky, featureFlags)
+    const utilityOutput = await executeUtilityCommand(
+      line,
+      sessionId,
+      repository,
+      taskCheckpointRepository,
+      memory,
+      buildManagedLLMConfig(),
+      uiState.getState,
+      approveRisky,
+      buildTurnOptions,
+      permissionRepository,
+      featureFlags,
+    )
     if (utilityOutput !== null) {
       completeUtilityExecution(uiState, matchedCommand, line, utilityOutput, 'awaiting_input')
       renderDashboardIfEnabled(sessionId, memory, buildManagedLLMConfig(), uiState, featureFlags)

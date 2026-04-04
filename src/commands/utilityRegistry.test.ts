@@ -21,6 +21,7 @@ describe('utilityRegistry', () => {
     expect(findUtilityCommandByInput('/task')?.id).toBe('task')
     expect(findUtilityCommandByInput('/task latest')?.id).toBe('task_latest')
     expect(findUtilityCommandByInput('/task checkpoints task-1')?.id).toBe('task_checkpoints')
+    expect(findUtilityCommandByInput('/task resume task-1')?.id).toBe('task_resume')
     expect(findUtilityCommandByInput('/status')?.id).toBe('status')
     expect(findUtilityCommandByInput('/consolidate-memory --auto')?.id).toBe('consolidate_memory_auto')
     expect(findUtilityCommandByInput('/model')?.id).toBe('model')
@@ -59,10 +60,12 @@ describe('utilityRegistry', () => {
     expect(exactTriggers).toContain('quit')
     expect(exactTriggers).not.toContain('/model set')
     expect(exactTriggers).not.toContain('/task checkpoints')
+    expect(exactTriggers).not.toContain('/task resume')
 
     expect(assistTriggers).toContain('/model set')
     expect(assistTriggers).toContain('/consolidate-memory')
     expect(assistTriggers).toContain('/task checkpoints')
+    expect(assistTriggers).toContain('/task resume')
     expect(assistTriggers.length).toBe(registry.length)
   })
 
