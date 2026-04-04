@@ -132,6 +132,7 @@ function executeUtilityCommand(
   command: string,
   sessionId: string,
   repository: SessionEventRepository,
+  taskCheckpointRepository: TaskCheckpointRepository,
   memory: ReturnType<typeof createMemoryCoordinator>,
   llmConfigSnapshot: ReturnType<typeof resolveManagedLLMConfig> | null,
   uiState: ReturnType<typeof createUIStateStore>['getState'],
@@ -350,6 +351,63 @@ function executeUtilityCommand(
       return formatTurnExplanation(explanation)
     }
 
+    if (utilityCommand.id === 'task') {
+      const tasks = taskCheckpointRepository.listTasksBySession(sessionId, 5)
+      if (tasks.length === 0) {
+        return colorInfo('No task checkpoints found for current session.')
+      }
+
+      const lines = [
+        colorCommand('Recent Tasks'),
+        ...tasks.map(task => `- ${task.taskId} | status=${task.status} | updated=${task.updatedAt}`),
+      ]
+      return lines.join('\n')
+    }
+
+    if (utilityCommand.id === 'task_latest') {
+      const latestTask = taskCheckpointRepository.getLatestTaskBySession(sessionId)
+      if (!latestTask) {
+        return colorInfo('No task checkpoints found for current session.')
+      }
+
+      const latestCheckpoint = taskCheckpointRepository.getLatestCheckpoint(latestTask.taskId)
+      if (!latestCheckpoint) {
+        return [
+          colorCommand('Latest Task'),
+          `- task: ${latestTask.taskId}`,
+          `- status: ${latestTask.status}`,
+          `- updated: ${latestTask.updatedAt}`,
+          '- checkpoint: (none)',
+        ].join('\n')
+      }
+
+      return [
+        colorCommand('Latest Task'),
+        `- task: ${latestTask.taskId}`,
+        `- status: ${latestTask.status}`,
+        `- updated: ${latestTask.updatedAt}`,
+        `- latest checkpoint: step=${latestCheckpoint.stepIndex} status=${latestCheckpoint.status}`,
+      ].join('\n')
+    }
+
+    if (utilityCommand.id === 'task_checkpoints') {
+      const taskId = raw.slice(utilityCommand.trigger.length).trim()
+      if (!taskId) {
+        return colorWarn('Usage: /task checkpoints <taskId>')
+      }
+
+      const checkpoints = taskCheckpointRepository.listCheckpoints(taskId, 10)
+      if (checkpoints.length === 0) {
+        return colorInfo(`No checkpoints found for task '${taskId}'.`)
+      }
+
+      const lines = [
+        colorCommand(`Task Checkpoints: ${taskId}`),
+        ...checkpoints.map(item => `- ${item.createdAt} | step=${item.stepIndex} | status=${item.status}`),
+      ]
+      return lines.join('\n')
+    }
+
     if (utilityCommand.id === 'consolidate_memory') {
       const result = memory.persistent.consolidate()
       return colorSuccess(`Memory consolidation complete. Removed ${result.removedCount} stale low-confidence facts.`)
@@ -524,7 +582,7 @@ async function main(): Promise<void> {
     initializeOneshotUI(uiState, parsedInput)
     renderDashboardIfEnabled('oneshot', memory, buildManagedLLMConfig(), uiState, featureFlags)
     const matchedUtility = findUtilityCommandByInput(parsedInput)
-    const utilityOutput = executeUtilityCommand(parsedInput, 'oneshot', repository, memory, buildManagedLLMConfig(), uiState.getState, approveRisky, featureFlags)
+    const utilityOutput = executeUtilityCommand(parsedInput, 'oneshot', repository, taskCheckpointRepository, memory, buildManagedLLMConfig(), uiState.getState, approveRisky, featureFlags)
     if (utilityOutput !== null) {
       completeUtilityExecution(uiState, matchedUtility, parsedInput, utilityOutput, 'stopped')
       renderDashboardIfEnabled('oneshot', memory, buildManagedLLMConfig(), uiState, featureFlags)
@@ -592,7 +650,7 @@ async function main(): Promise<void> {
     }
 
     beginUtilityExecution(uiState)
-    const utilityOutput = executeUtilityCommand(line, sessionId, repository, memory, buildManagedLLMConfig(), uiState.getState, approveRisky, featureFlags)
+    const utilityOutput = executeUtilityCommand(line, sessionId, repository, taskCheckpointRepository, memory, buildManagedLLMConfig(), uiState.getState, approveRisky, featureFlags)
     if (utilityOutput !== null) {
       completeUtilityExecution(uiState, matchedCommand, line, utilityOutput, 'awaiting_input')
       renderDashboardIfEnabled(sessionId, memory, buildManagedLLMConfig(), uiState, featureFlags)

@@ -9,12 +9,26 @@ export type TaskCheckpoint = {
   createdAt: string
 }
 
+export type TaskRecord = {
+  taskId: string
+  sessionId: string
+  status: TaskState
+  updatedAt: string
+}
+
 type TaskCheckpointRow = {
   task_id: string
   status: TaskState
   step_index: number
   payload_json: string
   created_at: string
+}
+
+type TaskRow = {
+  task_id: string
+  session_id: string
+  status: TaskState
+  updated_at: string
 }
 
 export class TaskCheckpointRepository {
@@ -91,5 +105,47 @@ export class TaskCheckpointRepository {
       payload: JSON.parse(row.payload_json),
       createdAt: row.created_at,
     }))
+  }
+
+  listTasksBySession(sessionId: string, limit = 10): TaskRecord[] {
+    const rows = this.db
+      .prepare(
+        `SELECT task_id, session_id, status, updated_at
+         FROM tasks
+         WHERE session_id = ?
+         ORDER BY updated_at DESC
+         LIMIT ?`,
+      )
+      .all(sessionId, limit) as TaskRow[]
+
+    return rows.map(row => ({
+      taskId: row.task_id,
+      sessionId: row.session_id,
+      status: row.status,
+      updatedAt: row.updated_at,
+    }))
+  }
+
+  getLatestTaskBySession(sessionId: string): TaskRecord | null {
+    const row = this.db
+      .prepare(
+        `SELECT task_id, session_id, status, updated_at
+         FROM tasks
+         WHERE session_id = ?
+         ORDER BY updated_at DESC
+         LIMIT 1`,
+      )
+      .get(sessionId) as TaskRow | undefined
+
+    if (!row) {
+      return null
+    }
+
+    return {
+      taskId: row.task_id,
+      sessionId: row.session_id,
+      status: row.status,
+      updatedAt: row.updated_at,
+    }
   }
 }

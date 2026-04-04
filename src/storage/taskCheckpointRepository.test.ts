@@ -61,4 +61,27 @@ describe('TaskCheckpointRepository', () => {
     const repo = makeRepo()
     expect(repo.getLatestCheckpoint('missing-task')).toBeNull()
   })
+
+  it('lists tasks by session in latest-first order', () => {
+    const repo = makeRepo()
+
+    repo.upsertTask('task-a', 'session-a', 'running', '2026-04-04T00:00:01.000Z')
+    repo.upsertTask('task-b', 'session-a', 'completed', '2026-04-04T00:00:03.000Z')
+    repo.upsertTask('task-c', 'session-a', 'failed', '2026-04-04T00:00:02.000Z')
+    repo.upsertTask('task-other', 'session-b', 'running', '2026-04-04T00:00:04.000Z')
+
+    const tasks = repo.listTasksBySession('session-a')
+    expect(tasks.map(task => task.taskId)).toEqual(['task-b', 'task-c', 'task-a'])
+  })
+
+  it('returns latest task for session', () => {
+    const repo = makeRepo()
+
+    repo.upsertTask('task-old', 'session-latest', 'running', '2026-04-04T00:00:01.000Z')
+    repo.upsertTask('task-new', 'session-latest', 'completed', '2026-04-04T00:00:05.000Z')
+
+    const latest = repo.getLatestTaskBySession('session-latest')
+    expect(latest?.taskId).toBe('task-new')
+    expect(latest?.status).toBe('completed')
+  })
 })

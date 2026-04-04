@@ -18,6 +18,9 @@ export type UtilityCommandSpec = {
   | 'model_set'
   | 'why'
   | 'why_json'
+  | 'task'
+  | 'task_latest'
+  | 'task_checkpoints'
   | 'consolidate_memory'
   | 'consolidate_memory_auto'
   | 'exit'
@@ -132,6 +135,26 @@ const UTILITY_COMMAND_REGISTRY: UtilityCommandSpec[] = [
     id: 'why_json',
     trigger: '/why --json',
     description: 'Output latest memory-usage explanation in JSON',
+  },
+  {
+    command: '/task',
+    id: 'task',
+    trigger: '/task',
+    description: 'Show recent task checkpoints for current session',
+  },
+  {
+    command: '/task latest',
+    id: 'task_latest',
+    trigger: '/task latest',
+    description: 'Show the latest task and its latest checkpoint',
+  },
+  {
+    command: '/task checkpoints <taskId>',
+    id: 'task_checkpoints',
+    trigger: '/task checkpoints',
+    description: 'Show checkpoints for a specific task id',
+    matchMode: 'prefix',
+    assistTrigger: '/task checkpoints',
   },
   {
     command: '/consolidate-memory',
