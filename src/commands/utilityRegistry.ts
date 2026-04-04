@@ -10,6 +10,8 @@ export type UtilityCommandSpec = {
   | 'diag'
   | 'diag_json'
   | 'dashboard'
+  | 'dashboard_compact'
+  | 'dashboard_detailed'
   | 'status'
   | 'model'
   | 'model_clear'
@@ -80,6 +82,18 @@ const UTILITY_COMMAND_REGISTRY: UtilityCommandSpec[] = [
     id: 'dashboard',
     trigger: '/dashboard',
     description: 'Render the read-only terminal dashboard snapshot',
+  },
+  {
+    command: '/dashboard --compact',
+    id: 'dashboard_compact',
+    trigger: '/dashboard --compact',
+    description: 'Render a compact dashboard snapshot',
+  },
+  {
+    command: '/dashboard --detailed',
+    id: 'dashboard_detailed',
+    trigger: '/dashboard --detailed',
+    description: 'Render a detailed dashboard snapshot',
   },
   {
     command: '/status',
