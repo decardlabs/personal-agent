@@ -2,7 +2,7 @@ import type { SessionEventRepository } from '../storage/sessionEventRepository.j
 import type { ToolPermissionRepository } from '../storage/toolPermissionRepository.js'
 import type { TaskCheckpointRepository } from '../storage/taskCheckpointRepository.js'
 import type { MemoryCoordinator } from '../memory/memoryCoordinator.js'
-import { executeSequentialTaskPlan } from './taskExecutor.js'
+import { executeSequentialTaskPlan, type TaskSequenceCheckpointPayload } from './taskExecutor.js'
 import { runTurn, type TurnOptions, type TurnResult } from './runTurn.js'
 import type { TaskState } from './taskStateMachine.js'
 
@@ -12,6 +12,18 @@ export type ResumeTaskResult = {
   checkpointStatus: TaskState | null
   resumedInput: string | null
   turnResult: TurnResult | null
+}
+
+function asSequencePayload(payload: unknown): TaskSequenceCheckpointPayload | null {
+  if (!payload || typeof payload !== 'object') {
+    return null
+  }
+  const candidate = payload as Record<string, unknown>
+  if (candidate['schema'] !== 'task_sequence.v1' || candidate['mode'] !== 'sequential') {
+    return null
+  }
+
+  return candidate as unknown as TaskSequenceCheckpointPayload
 }
 
 export async function resumeTaskFromLatestCheckpoint(args: {
@@ -48,9 +60,12 @@ export async function resumeTaskFromLatestCheckpoint(args: {
     latestCheckpoint.payload
     && typeof latestCheckpoint.payload === 'object'
   ) ? latestCheckpoint.payload as Record<string, unknown> : {}
+  const sequencePayload = asSequencePayload(latestCheckpoint.payload)
 
-  const resumeInput = typeof payload['normalizedInput'] === 'string'
-    ? payload['normalizedInput']
+  const resumeInput = typeof sequencePayload?.normalizedInput === 'string'
+    ? sequencePayload.normalizedInput
+    : typeof payload['normalizedInput'] === 'string'
+      ? payload['normalizedInput']
     : null
 
   if (!resumeInput) {
@@ -68,8 +83,10 @@ export async function resumeTaskFromLatestCheckpoint(args: {
     taskId: args.taskId,
   }
 
-  const remainingStepInputs = Array.isArray(payload['remainingStepInputs'])
-    ? payload['remainingStepInputs'].filter(item => typeof item === 'string') as string[]
+  const remainingStepInputs = Array.isArray(sequencePayload?.remainingStepInputs)
+    ? sequencePayload.remainingStepInputs.filter(item => typeof item === 'string')
+    : Array.isArray(payload['remainingStepInputs'])
+      ? payload['remainingStepInputs'].filter(item => typeof item === 'string') as string[]
     : []
 
   if (remainingStepInputs.length > 1) {
@@ -116,7 +133,7 @@ export async function resumeTaskFromLatestCheckpoint(args: {
         `Task '${args.taskId}' resumed from latest checkpoint.`,
         `- checkpoint status: ${latestCheckpoint.status}`,
         `- replayed input: ${remainingStepInputs[0]}`,
-        `- result: ${resumedTask.status} (${resumedTask.completedSteps}/${resumedTask.totalSteps})`,
+        `- result: ${resumedTask.summary.status} (${resumedTask.summary.completedSteps}/${resumedTask.summary.totalSteps})`,
       ].join('\n'),
       checkpointStatus: latestCheckpoint.status,
       resumedInput: remainingStepInputs[0] ?? null,

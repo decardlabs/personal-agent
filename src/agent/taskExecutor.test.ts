@@ -9,20 +9,27 @@ describe('taskExecutor', () => {
       throw new Error('expected task plan')
     }
 
-    const checkpoints: Array<{ status: string; stepIndex: number }> = []
+    const checkpoints: Array<{ status: string; stepIndex: number; payload: unknown }> = []
     const result = await executeSequentialTaskPlan({
       plan,
       sessionId: 'session-task-exec',
       buildTurnOptions: () => ({}),
       runStep: async input => ({ sessionId: 'session-task-exec', turnId: `turn-${input}`, response: `Echo: ${input.slice(5)}` }),
       checkpointWriter: checkpoint => {
-        checkpoints.push({ status: checkpoint.status, stepIndex: checkpoint.stepIndex })
+        checkpoints.push({ status: checkpoint.status, stepIndex: checkpoint.stepIndex, payload: checkpoint.payload })
       },
     })
 
-    expect(result.status).toBe('completed')
-    expect(result.completedSteps).toBe(2)
-    expect(checkpoints[0]).toEqual({ status: 'pending', stepIndex: 0 })
+    expect(result.summary.status).toBe('completed')
+    expect(result.summary.completedSteps).toBe(2)
+    expect(checkpoints[0]?.status).toBe('pending')
+    expect(checkpoints[0]?.stepIndex).toBe(0)
+    expect(checkpoints[0]?.payload).toMatchObject({
+      schema: 'task_sequence.v1',
+      mode: 'sequential',
+      phase: 'task_pending',
+      totalSteps: 2,
+    })
     expect(formatTaskExecutionResult(result)).toContain('progress: 2/2')
   })
 
@@ -48,8 +55,8 @@ describe('taskExecutor', () => {
       checkpointWriter: () => undefined,
     })
 
-    expect(result.status).toBe('timeout')
-    expect(result.completedSteps).toBe(1)
+    expect(result.summary.status).toBe('timeout')
+    expect(result.summary.completedSteps).toBe(1)
     expect(result.stepResults).toHaveLength(2)
   })
 })
