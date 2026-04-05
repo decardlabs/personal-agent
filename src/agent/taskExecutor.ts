@@ -21,6 +21,7 @@ export type TaskExecutionStepResult = {
   stepId: string
   label: string
   stepIndex: number
+  inputTemplate: string
   input: string
   response: string
   status: TaskState
@@ -55,6 +56,11 @@ export type TaskSequenceCheckpointPayload = {
     input: string
     dependsOn: string[]
   }>
+  completedSteps: Array<{
+    id: string
+    label: string
+    response: string
+  }>
   completedStepIds: string[]
   lastResponse: string | null
 }
@@ -85,6 +91,7 @@ function createSequencePayload(args: {
   normalizedInput: string | null
   remainingStepInputs: string[]
   pendingSteps: TaskPlanStep[]
+  completedSteps: TaskExecutionStepResult[]
   completedStepIds: string[]
   lastResponse?: string | null
 }): TaskSequenceCheckpointPayload {
@@ -103,6 +110,13 @@ function createSequencePayload(args: {
       input: step.input,
       dependsOn: [...step.dependsOn],
     })),
+    completedSteps: args.completedSteps
+      .filter(step => step.status === 'completed')
+      .map(step => ({
+        id: step.stepId,
+        label: step.label,
+        response: step.response,
+      })),
     completedStepIds: args.completedStepIds,
     lastResponse: args.lastResponse ?? null,
   }
@@ -112,6 +126,7 @@ function buildTaskExecutionResult(
   plan: TaskPlan,
   status: TaskState,
   stepResults: TaskExecutionStepResult[],
+  totalSteps: number,
 ): TaskExecutionResult {
   const completedSteps = stepResults.filter(item => item.status === 'completed').length
   return {
@@ -121,7 +136,7 @@ function buildTaskExecutionResult(
       mode: plan.mode,
       status,
       completedSteps,
-      totalSteps: plan.steps.length,
+      totalSteps,
     },
     stepResults,
   }
@@ -135,16 +150,50 @@ function getRunnableSteps(plan: TaskPlan, completedStepIds: Set<string>, started
   ))
 }
 
+function resolveStepInputTemplate(inputTemplate: string, completedSteps: TaskExecutionStepResult[]): string {
+  const byLabel = new Map(completedSteps.map(step => [step.label, step.response]))
+  const byStepIndex = new Map(completedSteps.map(step => [String(step.stepIndex), step.response]))
+  const lastResponse = completedSteps.length > 0
+    ? completedSteps[completedSteps.length - 1]?.response
+    : null
+
+  return inputTemplate.replace(/\{\{\s*([^}]+)\s*\}\}/g, (_match, tokenRaw: string) => {
+    const token = tokenRaw.trim()
+    if (token === 'last.response') {
+      return lastResponse ?? ''
+    }
+
+    const labelToken = token.match(/^step:([a-zA-Z0-9_-]+)\.response$/)
+    if (labelToken) {
+      return byLabel.get(labelToken[1] ?? '') ?? ''
+    }
+
+    const indexToken = token.match(/^step:(\d+)\.response$/)
+    if (indexToken) {
+      return byStepIndex.get(indexToken[1] ?? '') ?? ''
+    }
+
+    return ''
+  })
+}
+
 export async function executeSequentialTaskPlan(args: {
   plan: TaskPlan
   sessionId: string
   runStep: (input: string, options: TurnOptions) => Promise<TurnResult>
   buildTurnOptions: () => TurnOptions
   checkpointWriter: TaskExecutionCheckpointWriter
+  initialCompletedSteps?: TaskExecutionStepResult[]
+  totalSteps?: number
 }): Promise<TaskExecutionResult> {
-  const stepResults: TaskExecutionStepResult[] = []
-  const completedStepIds = new Set<string>()
-  const startedStepIds = new Set<string>()
+  const totalSteps = args.totalSteps ?? args.plan.steps.length
+  const stepResults: TaskExecutionStepResult[] = [...(args.initialCompletedSteps ?? [])]
+  const completedStepIds = new Set<string>(
+    (args.initialCompletedSteps ?? [])
+      .filter(step => step.status === 'completed')
+      .map(step => step.stepId),
+  )
+  const startedStepIds = new Set<string>((args.initialCompletedSteps ?? []).map(step => step.stepId))
 
   args.checkpointWriter({
     taskId: args.plan.taskId,
@@ -154,28 +203,30 @@ export async function executeSequentialTaskPlan(args: {
     payload: createSequencePayload({
       mode: args.plan.mode,
       phase: 'task_pending',
-      totalSteps: args.plan.steps.length,
+      totalSteps,
       currentStepId: null,
       currentStepIndex: null,
       normalizedInput: null,
       remainingStepInputs: args.plan.steps.map(step => step.input),
       pendingSteps: args.plan.steps,
-      completedStepIds: [],
+      completedSteps: stepResults,
+      completedStepIds: [...completedStepIds],
     }),
     createdAt: new Date().toISOString(),
   })
 
-  while (completedStepIds.size < args.plan.steps.length) {
+  while (!args.plan.steps.every(step => completedStepIds.has(step.id))) {
     const runnableSteps = getRunnableSteps(args.plan, completedStepIds, startedStepIds)
     if (runnableSteps.length === 0) {
-      return buildTaskExecutionResult(args.plan, 'failed', stepResults)
+      return buildTaskExecutionResult(args.plan, 'failed', stepResults, totalSteps)
     }
 
     for (const step of runnableSteps) {
       startedStepIds.add(step.id)
       const stepIndex = stepResults.length + 1
       const remainingSteps = args.plan.steps.filter(item => !completedStepIds.has(item.id) && item.id !== step.id)
-      const remainingStepInputs = [step.input, ...remainingSteps.map(item => item.input)]
+      const renderedInput = resolveStepInputTemplate(step.input, stepResults)
+      const remainingStepInputs = [renderedInput, ...remainingSteps.map(item => item.input)]
 
       args.checkpointWriter({
         taskId: args.plan.taskId,
@@ -185,12 +236,13 @@ export async function executeSequentialTaskPlan(args: {
         payload: createSequencePayload({
           mode: args.plan.mode,
           phase: 'step_running',
-          totalSteps: args.plan.steps.length,
+          totalSteps,
           currentStepId: step.id,
           currentStepIndex: stepIndex - 1,
-          normalizedInput: step.input,
+          normalizedInput: renderedInput,
           remainingStepInputs,
           pendingSteps: [step, ...remainingSteps],
+          completedSteps: stepResults,
           completedStepIds: [...completedStepIds],
         }),
         createdAt: new Date().toISOString(),
@@ -201,14 +253,15 @@ export async function executeSequentialTaskPlan(args: {
         taskId: undefined,
         taskCheckpointWriter: undefined,
       }
-      const result = await args.runStep(step.input, turnOptions)
+      const result = await args.runStep(renderedInput, turnOptions)
       const status = classifyResponseStatus(result.response)
 
       stepResults.push({
         stepId: step.id,
         label: step.label,
         stepIndex,
-        input: step.input,
+        inputTemplate: step.input,
+        input: renderedInput,
         response: result.response,
         status,
       })
@@ -227,12 +280,13 @@ export async function executeSequentialTaskPlan(args: {
         payload: createSequencePayload({
           mode: args.plan.mode,
           phase: 'step_result',
-          totalSteps: args.plan.steps.length,
+          totalSteps,
           currentStepId: step.id,
           currentStepIndex: stepIndex - 1,
-          normalizedInput: step.input,
+          normalizedInput: renderedInput,
           remainingStepInputs: pendingSteps.map(item => item.input),
           pendingSteps,
+          completedSteps: stepResults,
           completedStepIds: [...completedStepIds],
           lastResponse: result.response,
         }),
@@ -240,7 +294,7 @@ export async function executeSequentialTaskPlan(args: {
       })
 
       if (isTerminalFailure(status)) {
-        return buildTaskExecutionResult(args.plan, status, stepResults)
+        return buildTaskExecutionResult(args.plan, status, stepResults, totalSteps)
       }
     }
   }
@@ -249,22 +303,23 @@ export async function executeSequentialTaskPlan(args: {
     taskId: args.plan.taskId,
     sessionId: args.sessionId,
     status: 'completed',
-    stepIndex: args.plan.steps.length,
+    stepIndex: totalSteps,
     payload: createSequencePayload({
       mode: args.plan.mode,
       phase: 'task_completed',
-      totalSteps: args.plan.steps.length,
+      totalSteps,
       currentStepId: null,
       currentStepIndex: null,
       normalizedInput: null,
       remainingStepInputs: [],
       pendingSteps: [],
+      completedSteps: stepResults,
       completedStepIds: stepResults.map(item => item.stepId),
     }),
     createdAt: new Date().toISOString(),
   })
 
-  return buildTaskExecutionResult(args.plan, 'completed', stepResults)
+  return buildTaskExecutionResult(args.plan, 'completed', stepResults, totalSteps)
 }
 
 export function formatTaskExecutionResult(result: TaskExecutionResult): string {

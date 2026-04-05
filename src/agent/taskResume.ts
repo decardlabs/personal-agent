@@ -2,7 +2,11 @@ import type { SessionEventRepository } from '../storage/sessionEventRepository.j
 import type { ToolPermissionRepository } from '../storage/toolPermissionRepository.js'
 import type { TaskCheckpointRepository } from '../storage/taskCheckpointRepository.js'
 import type { MemoryCoordinator } from '../memory/memoryCoordinator.js'
-import { executeSequentialTaskPlan, type TaskSequenceCheckpointPayload } from './taskExecutor.js'
+import {
+  executeSequentialTaskPlan,
+  type TaskExecutionStepResult,
+  type TaskSequenceCheckpointPayload,
+} from './taskExecutor.js'
 import type { TaskPlanStep } from './taskPlan.js'
 import { runTurn, type TurnOptions, type TurnResult } from './runTurn.js'
 import type { TaskState } from './taskStateMachine.js'
@@ -55,6 +59,32 @@ function extractPendingSteps(payload: TaskSequenceCheckpointPayload | null, task
       }
     })
     .filter(step => step.input.length > 0)
+}
+
+function extractCompletedStepResults(payload: TaskSequenceCheckpointPayload | null): TaskExecutionStepResult[] {
+  if (!payload || !Array.isArray(payload.completedSteps) || payload.completedSteps.length === 0) {
+    return []
+  }
+
+  return payload.completedSteps
+    .filter(step => step && typeof step === 'object')
+    .map((step, index) => {
+      const candidate = step as {
+        id?: string
+        label?: string
+        response?: string
+      }
+      return {
+        stepId: typeof candidate.id === 'string' ? candidate.id : `completed-step-${index + 1}`,
+        label: typeof candidate.label === 'string' ? candidate.label : `completed-step-${index + 1}`,
+        stepIndex: index + 1,
+        inputTemplate: '(checkpoint snapshot)',
+        input: '(checkpoint snapshot)',
+        response: typeof candidate.response === 'string' ? candidate.response : '',
+        status: 'completed' as const,
+      }
+    })
+    .filter(step => step.response.length > 0)
 }
 
 export async function resumeTaskFromLatestCheckpoint(args: {
@@ -120,6 +150,7 @@ export async function resumeTaskFromLatestCheckpoint(args: {
       ? payload['remainingStepInputs'].filter(item => typeof item === 'string') as string[]
     : []
   const pendingSteps = extractPendingSteps(sequencePayload, args.taskId)
+  const completedStepResults = extractCompletedStepResults(sequencePayload)
 
   if (pendingSteps.length > 0 || remainingStepInputs.length > 1) {
     const resumedSteps = pendingSteps.length > 0
@@ -145,6 +176,8 @@ export async function resumeTaskFromLatestCheckpoint(args: {
         steps: resumedSteps,
       },
       sessionId: args.sessionId,
+      totalSteps: sequencePayload?.totalSteps ?? (completedStepResults.length + resumedSteps.length),
+      initialCompletedSteps: completedStepResults,
       buildTurnOptions: () => resumeOptions,
       runStep: async (input, options) => runTurn(
         input,

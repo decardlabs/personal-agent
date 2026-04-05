@@ -37,7 +37,7 @@ describe('taskResume', () => {
         schema: 'task_sequence.v1',
         mode: 'sequential',
         phase: 'step_result',
-        totalSteps: 2,
+        totalSteps: 3,
         currentStepId: 'task-resume-1:step-1',
         currentStepIndex: 0,
         normalizedInput: 'echo alpha',
@@ -54,6 +54,13 @@ describe('taskResume', () => {
             label: 'stage-3-step-1',
             input: 'echo gamma',
             dependsOn: ['task-resume-1:step-2'],
+          },
+        ],
+        completedSteps: [
+          {
+            id: 'task-resume-1:step-1',
+            label: 'stage-1-step-1',
+            response: 'Echo: alpha',
           },
         ],
         completedStepIds: ['task-resume-1:step-1'],
@@ -76,7 +83,7 @@ describe('taskResume', () => {
 
     expect(result.kind).toBe('resumed')
     expect(result.resumedInput).toBe('echo beta')
-    expect(result.message).toContain('result: completed (2/2)')
+    expect(result.message).toContain('result: completed (3/3)')
   })
 
   it('resumes a dependency-graph checkpoint using pending step metadata', async () => {
@@ -129,6 +136,13 @@ describe('taskResume', () => {
             dependsOn: ['task-resume-graph-1:step-2', 'task-resume-graph-1:step-3'],
           },
         ],
+        completedSteps: [
+          {
+            id: 'task-resume-graph-1:step-1',
+            label: 'stage-1-step-1',
+            response: 'Echo: prepare',
+          },
+        ],
         completedStepIds: ['task-resume-graph-1:step-1'],
         lastResponse: 'Turn cancelled: tool execution timed out.',
       },
@@ -149,6 +163,6 @@ describe('taskResume', () => {
 
     expect(result.kind).toBe('resumed')
     expect(result.resumedInput).toBe('echo lint')
-    expect(result.message).toContain('result: completed (3/3)')
+    expect(result.message).toContain('result: completed (4/4)')
   })
 })

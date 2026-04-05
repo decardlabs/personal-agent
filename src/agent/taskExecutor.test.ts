@@ -33,6 +33,7 @@ describe('taskExecutor', () => {
         expect.objectContaining({ input: 'echo one' }),
         expect.objectContaining({ input: 'echo two' }),
       ],
+      completedSteps: [],
     })
     expect(formatTaskExecutionResult(result)).toContain('mode: sequential')
     expect(formatTaskExecutionResult(result)).toContain('progress: 2/2')
@@ -92,5 +93,37 @@ describe('taskExecutor', () => {
     expect(executedInputs).toEqual(['echo prepare', 'echo lint', 'echo test', 'echo release'])
     expect(formatTaskExecutionResult(result)).toContain('mode: dependency_graph')
     expect(formatTaskExecutionResult(result)).toContain('(stage-3-step-1): completed | Echo: release')
+  })
+
+  it('resolves step response placeholders in subsequent step inputs', async () => {
+    const plan = parseTaskRunCommand('/task run echo alpha => echo {{step:stage-1-step-1.response}} => echo {{last.response}}')
+    if (!plan) {
+      throw new Error('expected task plan')
+    }
+
+    const executedInputs: string[] = []
+    const result = await executeSequentialTaskPlan({
+      plan,
+      sessionId: 'session-task-template',
+      buildTurnOptions: () => ({}),
+      runStep: async input => {
+        executedInputs.push(input)
+        return {
+          sessionId: 'session-task-template',
+          turnId: `turn-${executedInputs.length}`,
+          response: `Echo: ${input.slice(5)}`,
+        }
+      },
+      checkpointWriter: () => undefined,
+    })
+
+    expect(executedInputs).toEqual([
+      'echo alpha',
+      'echo Echo: alpha',
+      'echo Echo: Echo: alpha',
+    ])
+    expect(result.summary.status).toBe('completed')
+    expect(result.stepResults[2]?.inputTemplate).toBe('echo {{last.response}}')
+    expect(result.stepResults[2]?.input).toBe('echo Echo: Echo: alpha')
   })
 })
