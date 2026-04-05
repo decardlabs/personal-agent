@@ -42,6 +42,20 @@ describe('taskResume', () => {
         currentStepIndex: 0,
         normalizedInput: 'echo alpha',
         remainingStepInputs: ['echo beta', 'echo gamma'],
+        pendingSteps: [
+          {
+            id: 'task-resume-1:step-2',
+            label: 'stage-2-step-1',
+            input: 'echo beta',
+            dependsOn: [],
+          },
+          {
+            id: 'task-resume-1:step-3',
+            label: 'stage-3-step-1',
+            input: 'echo gamma',
+            dependsOn: ['task-resume-1:step-2'],
+          },
+        ],
         completedStepIds: ['task-resume-1:step-1'],
         lastResponse: 'Turn cancelled: tool execution timed out.',
       },
@@ -63,5 +77,78 @@ describe('taskResume', () => {
     expect(result.kind).toBe('resumed')
     expect(result.resumedInput).toBe('echo beta')
     expect(result.message).toContain('result: completed (2/2)')
+  })
+
+  it('resumes a dependency-graph checkpoint using pending step metadata', async () => {
+    const db = initializeDatabase(':memory:')
+    applyMigrations(db)
+    const eventRepository = new SessionEventRepository(db)
+    const taskCheckpointRepository = new TaskCheckpointRepository(db)
+    const permissionRepository = new ToolPermissionRepository(db)
+    const memory = createMemoryCoordinator(
+      new PersistentMemoryStore(new MemoryFactRepository(db)),
+      new PreferenceStore(new PreferenceRepository(db)),
+    )
+
+    taskCheckpointRepository.upsertTask(
+      'task-resume-graph-1',
+      'session-resume-graph-1',
+      'timeout',
+      '2026-04-05T00:00:00.000Z',
+    )
+    taskCheckpointRepository.saveCheckpoint({
+      taskId: 'task-resume-graph-1',
+      status: 'timeout',
+      stepIndex: 2,
+      payload: {
+        schema: 'task_sequence.v1',
+        mode: 'dependency_graph',
+        phase: 'step_result',
+        totalSteps: 4,
+        currentStepId: 'task-resume-graph-1:step-2',
+        currentStepIndex: 1,
+        normalizedInput: 'echo lint',
+        remainingStepInputs: ['echo lint', 'echo test', 'echo release'],
+        pendingSteps: [
+          {
+            id: 'task-resume-graph-1:step-2',
+            label: 'stage-2-step-1',
+            input: 'echo lint',
+            dependsOn: ['task-resume-graph-1:step-1'],
+          },
+          {
+            id: 'task-resume-graph-1:step-3',
+            label: 'stage-2-step-2',
+            input: 'echo test',
+            dependsOn: ['task-resume-graph-1:step-1'],
+          },
+          {
+            id: 'task-resume-graph-1:step-4',
+            label: 'stage-3-step-1',
+            input: 'echo release',
+            dependsOn: ['task-resume-graph-1:step-2', 'task-resume-graph-1:step-3'],
+          },
+        ],
+        completedStepIds: ['task-resume-graph-1:step-1'],
+        lastResponse: 'Turn cancelled: tool execution timed out.',
+      },
+      createdAt: '2026-04-05T00:00:00.000Z',
+    })
+
+    const result = await resumeTaskFromLatestCheckpoint({
+      taskId: 'task-resume-graph-1',
+      sessionId: 'session-resume-graph-1',
+      repository: eventRepository,
+      taskCheckpointRepository,
+      memory,
+      permissionRepository,
+      turnOptions: {
+        echoToolRunner: args => ({ output: args.content }),
+      },
+    })
+
+    expect(result.kind).toBe('resumed')
+    expect(result.resumedInput).toBe('echo lint')
+    expect(result.message).toContain('result: completed (3/3)')
   })
 })

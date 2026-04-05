@@ -3,6 +3,7 @@ import type { ToolPermissionRepository } from '../storage/toolPermissionReposito
 import type { TaskCheckpointRepository } from '../storage/taskCheckpointRepository.js'
 import type { MemoryCoordinator } from '../memory/memoryCoordinator.js'
 import { executeSequentialTaskPlan, type TaskSequenceCheckpointPayload } from './taskExecutor.js'
+import type { TaskPlanStep } from './taskPlan.js'
 import { runTurn, type TurnOptions, type TurnResult } from './runTurn.js'
 import type { TaskState } from './taskStateMachine.js'
 
@@ -19,11 +20,41 @@ function asSequencePayload(payload: unknown): TaskSequenceCheckpointPayload | nu
     return null
   }
   const candidate = payload as Record<string, unknown>
-  if (candidate['schema'] !== 'task_sequence.v1' || candidate['mode'] !== 'sequential') {
+  const mode = candidate['mode']
+  if (
+    candidate['schema'] !== 'task_sequence.v1'
+    || (mode !== 'sequential' && mode !== 'dependency_graph')
+  ) {
     return null
   }
 
   return candidate as unknown as TaskSequenceCheckpointPayload
+}
+
+function extractPendingSteps(payload: TaskSequenceCheckpointPayload | null, taskId: string): TaskPlanStep[] {
+  if (!payload || !Array.isArray(payload.pendingSteps) || payload.pendingSteps.length === 0) {
+    return []
+  }
+
+  return payload.pendingSteps
+    .filter(step => step && typeof step === 'object')
+    .map((step, index) => {
+      const candidate = step as {
+        id?: string
+        label?: string
+        input?: string
+        dependsOn?: string[]
+      }
+      return {
+        id: typeof candidate.id === 'string' ? candidate.id : `${taskId}:resume-step-${index + 1}`,
+        label: typeof candidate.label === 'string' ? candidate.label : `resume-step-${index + 1}`,
+        input: typeof candidate.input === 'string' ? candidate.input : '',
+        dependsOn: Array.isArray(candidate.dependsOn)
+          ? candidate.dependsOn.filter(item => typeof item === 'string')
+          : [],
+      }
+    })
+    .filter(step => step.input.length > 0)
 }
 
 export async function resumeTaskFromLatestCheckpoint(args: {
@@ -88,17 +119,30 @@ export async function resumeTaskFromLatestCheckpoint(args: {
     : Array.isArray(payload['remainingStepInputs'])
       ? payload['remainingStepInputs'].filter(item => typeof item === 'string') as string[]
     : []
+  const pendingSteps = extractPendingSteps(sequencePayload, args.taskId)
 
-  if (remainingStepInputs.length > 1) {
+  if (pendingSteps.length > 0 || remainingStepInputs.length > 1) {
+    const resumedSteps = pendingSteps.length > 0
+      ? (() => {
+        const pendingStepIds = new Set(pendingSteps.map(step => step.id))
+        return pendingSteps.map(step => ({
+          ...step,
+          dependsOn: step.dependsOn.filter(dependencyId => pendingStepIds.has(dependencyId)),
+        }))
+      })()
+      : remainingStepInputs.map((input, index) => ({
+        id: `${args.taskId}:resume-step-${index + 1}`,
+        label: `resume-step-${index + 1}`,
+        input,
+        dependsOn: index === 0 ? [] : [`${args.taskId}:resume-step-${index}`],
+      }))
     const resumedTask = await executeSequentialTaskPlan({
       plan: {
         taskId: args.taskId,
-        mode: 'sequential',
-        steps: remainingStepInputs.map((input, index) => ({
-          id: `${args.taskId}:resume-step-${index + 1}`,
-          input,
-          dependsOn: index === 0 ? [] : [`${args.taskId}:resume-step-${index}`],
-        })),
+        mode: pendingSteps.length > 0 && pendingSteps.some(step => step.dependsOn.length > 1)
+          ? 'dependency_graph'
+          : (sequencePayload?.mode ?? 'sequential'),
+        steps: resumedSteps,
       },
       sessionId: args.sessionId,
       buildTurnOptions: () => resumeOptions,
@@ -132,11 +176,11 @@ export async function resumeTaskFromLatestCheckpoint(args: {
       message: [
         `Task '${args.taskId}' resumed from latest checkpoint.`,
         `- checkpoint status: ${latestCheckpoint.status}`,
-        `- replayed input: ${remainingStepInputs[0]}`,
+        `- replayed input: ${resumedSteps[0]?.input ?? remainingStepInputs[0] ?? resumeInput}`,
         `- result: ${resumedTask.summary.status} (${resumedTask.summary.completedSteps}/${resumedTask.summary.totalSteps})`,
       ].join('\n'),
       checkpointStatus: latestCheckpoint.status,
-      resumedInput: remainingStepInputs[0] ?? null,
+      resumedInput: resumedSteps[0]?.input ?? remainingStepInputs[0] ?? null,
       turnResult: null,
     }
   }

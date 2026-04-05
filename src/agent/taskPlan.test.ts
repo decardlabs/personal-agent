@@ -12,6 +12,20 @@ describe('taskPlan', () => {
     expect(plan?.steps[1]?.dependsOn).toHaveLength(1)
   })
 
+  it('parses bracketed branch stages into a dependency graph', () => {
+    const plan = parseTaskRunCommand('/task run echo prepare => [echo lint | echo test] => echo release')
+
+    expect(plan).not.toBeNull()
+    expect(plan?.mode).toBe('dependency_graph')
+    expect(plan?.steps).toHaveLength(4)
+    expect(plan?.steps[1]?.dependsOn).toEqual([plan?.steps[0]?.id])
+    expect(plan?.steps[2]?.dependsOn).toEqual([plan?.steps[0]?.id])
+    expect(plan?.steps[3]?.dependsOn).toEqual([
+      plan?.steps[1]?.id,
+      plan?.steps[2]?.id,
+    ])
+  })
+
   it('returns null for invalid or single-step commands', () => {
     expect(parseTaskRunCommand('/task run')).toBeNull()
     expect(parseTaskRunCommand('/task run echo only')).toBeNull()

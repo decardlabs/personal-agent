@@ -441,7 +441,7 @@ async function executeUtilityCommand(
     if (utilityCommand.id === 'task_run') {
       const plan = parseTaskRunCommand(raw)
       if (!plan) {
-        return colorWarn('Usage: /task run <step1> => <step2> [=> <step3> ...]')
+        return colorWarn('Usage: /task run <step1> => <step2> [=> <step3> ...] | /task run <step1> => [<branchA> | <branchB>] => <stepN>')
       }
 
       const checkpointWriter = createTaskCheckpointWriter(taskCheckpointRepository)

@@ -75,7 +75,7 @@ export async function runTurn(
   repository: SessionEventRepository,
   memory: MemoryCoordinator,
   permissionRepository: ToolPermissionRepository,
-  sessionId = randomUUID(),
+  sessionId: string = randomUUID(),
   options: TurnOptions = {},
 ): Promise<TurnResult> {
     const appendHistoryAndMaybeConsolidate = (finalResponse: string): void => {

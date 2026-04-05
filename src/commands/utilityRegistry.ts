@@ -148,7 +148,7 @@ const UTILITY_COMMAND_REGISTRY: UtilityCommandSpec[] = [
     command: '/task run <step1> => <step2>',
     id: 'task_run',
     trigger: '/task run',
-    description: 'Run a minimal sequential multi-step task plan',
+    description: 'Run a staged task plan; use [a | b] for branch-aware stages',
     matchMode: 'prefix',
     assistTrigger: '/task run',
   },

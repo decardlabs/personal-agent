@@ -29,7 +29,12 @@ describe('taskExecutor', () => {
       mode: 'sequential',
       phase: 'task_pending',
       totalSteps: 2,
+      pendingSteps: [
+        expect.objectContaining({ input: 'echo one' }),
+        expect.objectContaining({ input: 'echo two' }),
+      ],
     })
+    expect(formatTaskExecutionResult(result)).toContain('mode: sequential')
     expect(formatTaskExecutionResult(result)).toContain('progress: 2/2')
   })
 
@@ -58,5 +63,34 @@ describe('taskExecutor', () => {
     expect(result.summary.status).toBe('timeout')
     expect(result.summary.completedSteps).toBe(1)
     expect(result.stepResults).toHaveLength(2)
+  })
+
+  it('executes branch-aware stages once dependencies are completed', async () => {
+    const plan = parseTaskRunCommand('/task run echo prepare => [echo lint | echo test] => echo release')
+    if (!plan) {
+      throw new Error('expected task plan')
+    }
+
+    const executedInputs: string[] = []
+    const result = await executeSequentialTaskPlan({
+      plan,
+      sessionId: 'session-task-graph',
+      buildTurnOptions: () => ({}),
+      runStep: async input => {
+        executedInputs.push(input)
+        return {
+          sessionId: 'session-task-graph',
+          turnId: `turn-${executedInputs.length}`,
+          response: `Echo: ${input.slice(5)}`,
+        }
+      },
+      checkpointWriter: () => undefined,
+    })
+
+    expect(result.summary.mode).toBe('dependency_graph')
+    expect(result.summary.status).toBe('completed')
+    expect(executedInputs).toEqual(['echo prepare', 'echo lint', 'echo test', 'echo release'])
+    expect(formatTaskExecutionResult(result)).toContain('mode: dependency_graph')
+    expect(formatTaskExecutionResult(result)).toContain('(stage-3-step-1): completed | Echo: release')
   })
 })

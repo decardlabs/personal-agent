@@ -212,7 +212,21 @@ export const replayCases: ReplayCase[] = [
     ],
     expectedResponses: ['dynamic-response-handled-by-pattern'],
     expectedResponsePatterns: [
-      String.raw`^Task 'task-[^']+' finished with status completed\.\n- progress: 2/2\n- step 1: completed \| Echo: alpha\n- step 2: completed \| Echo: beta$`,
+      String.raw`^Task 'task-[^']+' finished with status completed\.\n- mode: sequential\n- progress: 2/2\n- step 1 \(stage-1-step-1\): completed \| Echo: alpha\n- step 2 \(stage-2-step-1\): completed \| Echo: beta$`,
+    ],
+  },
+  {
+    name: 'task run executes a branch-aware staged plan',
+    sessionId: 'replay-session-18',
+    steps: [
+      {
+        input: '/task run echo prepare => [echo lint | echo test] => echo release',
+        memoryIntent: 'not_required',
+      },
+    ],
+    expectedResponses: ['dynamic-response-handled-by-pattern'],
+    expectedResponsePatterns: [
+      String.raw`^Task 'task-[^']+' finished with status completed\.\n- mode: dependency_graph\n- progress: 4/4\n- step 1 \(stage-1-step-1\): completed \| Echo: prepare\n- step 2 \(stage-2-step-1\): completed \| Echo: lint\n- step 3 \(stage-2-step-2\): completed \| Echo: test\n- step 4 \(stage-3-step-1\): completed \| Echo: release$`,
     ],
   },
 ]
