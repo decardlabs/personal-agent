@@ -332,4 +332,102 @@ describe('taskExecutor', () => {
 
     expect(executedInputs).toEqual(['echo alpha', 'echo neg-regex-hit'])
   })
+
+  it('skips step when compound and condition has a false clause', async () => {
+    const plan = parseTaskRunCommand(
+      '/task run echo alpha => when step:1.response contains "alpha" and step:1.response contains "missing" then echo should-not-run => echo done',
+    )
+    if (!plan) {
+      throw new Error('expected task plan')
+    }
+
+    const executedInputs: string[] = []
+    const result = await executeSequentialTaskPlan({
+      plan,
+      sessionId: 'session-compound-and-false',
+      buildTurnOptions: () => ({}),
+      runStep: async input => {
+        executedInputs.push(input)
+        return { sessionId: 'session-compound-and-false', turnId: `t${executedInputs.length}`, response: `Echo: ${input.slice(5)}` }
+      },
+      checkpointWriter: () => undefined,
+    })
+
+    expect(executedInputs).toEqual(['echo alpha', 'echo done'])
+    expect(result.stepResults[1]?.wasSkipped).toBe(true)
+    expect(result.stepResults[1]?.response).toContain('Step skipped: condition not met')
+  })
+
+  it('runs step when compound and condition has all true clauses', async () => {
+    const plan = parseTaskRunCommand(
+      '/task run echo alpha => when step:1.response contains "alpha" and step:1.response startsWith "Echo" then echo compound-hit',
+    )
+    if (!plan) {
+      throw new Error('expected task plan')
+    }
+
+    const executedInputs: string[] = []
+    const result = await executeSequentialTaskPlan({
+      plan,
+      sessionId: 'session-compound-and-true',
+      buildTurnOptions: () => ({}),
+      runStep: async input => {
+        executedInputs.push(input)
+        return { sessionId: 'session-compound-and-true', turnId: `t${executedInputs.length}`, response: `Echo: ${input.slice(5)}` }
+      },
+      checkpointWriter: () => undefined,
+    })
+
+    expect(executedInputs).toEqual(['echo alpha', 'echo compound-hit'])
+    expect(result.stepResults[1]?.wasSkipped).toBe(false)
+    expect(result.stepResults[1]?.response).toBe('Echo: compound-hit')
+  })
+
+  it('runs step when compound or condition has at least one true clause', async () => {
+    const plan = parseTaskRunCommand(
+      '/task run echo alpha => when step:1.response contains "missing" or step:1.response contains "alpha" then echo or-hit',
+    )
+    if (!plan) {
+      throw new Error('expected task plan')
+    }
+
+    const executedInputs: string[] = []
+    const result = await executeSequentialTaskPlan({
+      plan,
+      sessionId: 'session-compound-or-true',
+      buildTurnOptions: () => ({}),
+      runStep: async input => {
+        executedInputs.push(input)
+        return { sessionId: 'session-compound-or-true', turnId: `t${executedInputs.length}`, response: `Echo: ${input.slice(5)}` }
+      },
+      checkpointWriter: () => undefined,
+    })
+
+    expect(executedInputs).toEqual(['echo alpha', 'echo or-hit'])
+    expect(result.stepResults[1]?.wasSkipped).toBe(false)
+  })
+
+  it('skips step when compound or condition has all false clauses', async () => {
+    const plan = parseTaskRunCommand(
+      '/task run echo alpha => when step:1.response contains "foo" or step:1.response contains "bar" then echo should-skip => echo done',
+    )
+    if (!plan) {
+      throw new Error('expected task plan')
+    }
+
+    const executedInputs: string[] = []
+    const result = await executeSequentialTaskPlan({
+      plan,
+      sessionId: 'session-compound-or-false',
+      buildTurnOptions: () => ({}),
+      runStep: async input => {
+        executedInputs.push(input)
+        return { sessionId: 'session-compound-or-false', turnId: `t${executedInputs.length}`, response: `Echo: ${input.slice(5)}` }
+      },
+      checkpointWriter: () => undefined,
+    })
+
+    expect(executedInputs).toEqual(['echo alpha', 'echo done'])
+    expect(result.stepResults[1]?.wasSkipped).toBe(true)
+  })
 })

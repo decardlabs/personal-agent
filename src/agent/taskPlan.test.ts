@@ -68,6 +68,36 @@ describe('taskPlan', () => {
     })
   })
 
+  it('parses compound "and" condition into a compound condition object', () => {
+    const plan = parseTaskRunCommand(
+      '/task run echo alpha => echo beta => when step:1.response contains "alpha" and step:2.response contains "beta" then echo compound-ok',
+    )
+
+    expect(plan).not.toBeNull()
+    expect(plan?.steps[2]?.condition).toEqual({
+      combinator: 'and',
+      clauses: [
+        { source: 'step:1.response', operator: 'contains', value: 'alpha' },
+        { source: 'step:2.response', operator: 'contains', value: 'beta' },
+      ],
+    })
+  })
+
+  it('parses compound "or" condition into a compound condition object', () => {
+    const plan = parseTaskRunCommand(
+      '/task run echo alpha => when step:1.response equals "fail" or step:1.response equals "error" then echo fallback',
+    )
+
+    expect(plan).not.toBeNull()
+    expect(plan?.steps[1]?.condition).toEqual({
+      combinator: 'or',
+      clauses: [
+        { source: 'step:1.response', operator: 'equals', value: 'fail' },
+        { source: 'step:1.response', operator: 'equals', value: 'error' },
+      ],
+    })
+  })
+
   it('returns null for invalid or single-step commands', () => {
     expect(parseTaskRunCommand('/task run')).toBeNull()
     expect(parseTaskRunCommand('/task run echo only')).toBeNull()

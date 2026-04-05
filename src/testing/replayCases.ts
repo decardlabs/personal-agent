@@ -271,4 +271,18 @@ export const replayCases: ReplayCase[] = [
       String.raw`^Task 'task-[^']+' finished with status completed\.\n- mode: sequential\n- progress: 2/2\n- step 1 \(stage-1-step-1\): completed \| Echo: alpha\n- step 2 \(stage-2-step-1\): completed \| Echo: neg-ok$`,
     ],
   },
+  {
+    name: 'task run executes compound and condition step when all clauses match',
+    sessionId: 'replay-session-22',
+    steps: [
+      {
+        input: '/task run echo alpha => echo beta => when step:1.response contains "alpha" and step:2.response contains "beta" then echo compound-ok',
+        memoryIntent: 'not_required',
+      },
+    ],
+    expectedResponses: ['dynamic-response-handled-by-pattern'],
+    expectedResponsePatterns: [
+      String.raw`^Task 'task-[^']+' finished with status completed\.\n- mode: sequential\n- progress: 3/3\n- step 1 \(stage-1-step-1\): completed \| Echo: alpha\n- step 2 \(stage-2-step-1\): completed \| Echo: beta\n- step 3 \(stage-3-step-1\): completed \| Echo: compound-ok$`,
+    ],
+  },
 ]

@@ -1,5 +1,5 @@
 import type { TurnOptions, TurnResult } from './runTurn.js'
-import type { TaskPlan, TaskPlanStep, TaskStepCondition } from './taskPlan.js'
+import { isCompoundCondition, type TaskPlan, type TaskPlanStep, type TaskStepCondition, type TaskStepCompoundCondition } from './taskPlan.js'
 import type { TaskState } from './taskStateMachine.js'
 
 export type TaskSequenceCheckpointPhase =
@@ -56,7 +56,7 @@ export type TaskSequenceCheckpointPayload = {
     label: string
     input: string
     dependsOn: string[]
-    condition?: TaskStepCondition
+    condition?: TaskStepCondition | TaskStepCompoundCondition
   }>
   completedSteps: Array<{
     id: string
@@ -218,7 +218,7 @@ function tryParseNumber(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null
 }
 
-function evaluateCondition(condition: TaskStepCondition, completedSteps: TaskExecutionStepResult[]): boolean {
+function evaluateSingleCondition(condition: TaskStepCondition, completedSteps: TaskExecutionStepResult[]): boolean {
   const sourceValue = resolveConditionSource(condition.source, completedSteps)
   if (condition.operator === 'contains') {
     return sourceValue.includes(condition.value)
@@ -271,6 +271,19 @@ function evaluateCondition(condition: TaskStepCondition, completedSteps: TaskExe
     return left <= right
   }
   return false
+}
+
+function evaluateCondition(
+  condition: TaskStepCondition | TaskStepCompoundCondition,
+  completedSteps: TaskExecutionStepResult[],
+): boolean {
+  if (isCompoundCondition(condition)) {
+    const evaluate = (c: TaskStepCondition) => evaluateSingleCondition(c, completedSteps)
+    return condition.combinator === 'and'
+      ? condition.clauses.every(evaluate)
+      : condition.clauses.some(evaluate)
+  }
+  return evaluateSingleCondition(condition, completedSteps)
 }
 
 export async function executeSequentialTaskPlan(args: {
@@ -355,7 +368,11 @@ export async function executeSequentialTaskPlan(args: {
 
       if (!isConditionMatched) {
         status = 'completed'
-        response = `Step skipped: condition not met (${step.condition?.source} ${step.condition?.operator} "${step.condition?.value}")`
+        const cond = step.condition!
+        const condDesc = isCompoundCondition(cond)
+          ? cond.clauses.map(c => `${c.source} ${c.operator} "${c.value}"`).join(` ${cond.combinator} `)
+          : `${cond.source} ${cond.operator} "${cond.value}"`
+        response = `Step skipped: condition not met (${condDesc})`
       } else {
         const result = await args.runStep(renderedInput, turnOptions)
         response = result.response

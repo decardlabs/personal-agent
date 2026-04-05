@@ -7,7 +7,7 @@ import {
   type TaskExecutionStepResult,
   type TaskSequenceCheckpointPayload,
 } from './taskExecutor.js'
-import type { TaskPlanStep, TaskStepCondition } from './taskPlan.js'
+import type { TaskPlanStep, TaskStepCondition, TaskStepCompoundCondition } from './taskPlan.js'
 import { runTurn, type TurnOptions, type TurnResult } from './runTurn.js'
 import type { TaskState } from './taskStateMachine.js'
 
@@ -48,7 +48,7 @@ function extractPendingSteps(payload: TaskSequenceCheckpointPayload | null, task
         label?: string
         input?: string
         dependsOn?: string[]
-        condition?: TaskStepCondition
+        condition?: TaskStepCondition | TaskStepCompoundCondition
       }
       return {
         id: typeof candidate.id === 'string' ? candidate.id : `${taskId}:resume-step-${index + 1}`,

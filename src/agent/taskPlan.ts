@@ -5,7 +5,18 @@ export type TaskPlanStep = {
   label: string
   input: string
   dependsOn: string[]
-  condition?: TaskStepCondition
+  condition?: TaskStepCondition | TaskStepCompoundCondition
+}
+
+export type TaskStepCompoundCondition = {
+  combinator: 'and' | 'or'
+  clauses: TaskStepCondition[]
+}
+
+export function isCompoundCondition(
+  c: TaskStepCondition | TaskStepCompoundCondition,
+): c is TaskStepCompoundCondition {
+  return 'combinator' in c && 'clauses' in c
 }
 
 export type TaskPlan = {
@@ -43,41 +54,109 @@ function normalizeConditionValue(rawValue: string): string {
   return trimmed
 }
 
-function parseConditionalStep(input: string): { commandInput: string; condition?: TaskStepCondition } {
-  const match = input.match(
-    /^when\s+([^\s]+)\s+(contains|notcontains|equals|notequals|startswith|endswith|matches|notmatches|gt|gte|lt|lte)\s+(.+?)\s+then\s+(.+)$/i,
+function normalizeOperator(rawOperator: string): TaskStepCondition['operator'] {
+  switch (rawOperator) {
+    case 'startswith': return 'startsWith'
+    case 'endswith': return 'endsWith'
+    case 'notcontains': return 'notContains'
+    case 'notequals': return 'notEquals'
+    case 'notmatches': return 'notMatches'
+    default: return rawOperator as TaskStepCondition['operator']
+  }
+}
+
+function parseSingleConditionClause(body: string): TaskStepCondition | null {
+  const match = body.trim().match(
+    /^([^\s]+)\s+(contains|notcontains|equals|notequals|startswith|endswith|matches|notmatches|gt|gte|lt|lte)\s+(.+)$/i,
   )
+  if (!match) {
+    return null
+  }
+  const source = match[1]?.trim()
+  if (!source) {
+    return null
+  }
+  const operator = normalizeOperator(match[2]?.toLowerCase() ?? '')
+  const value = normalizeConditionValue(match[3] ?? '')
+  return { source, operator, value }
+}
+
+function splitOnCombinator(body: string): { clauses: string[]; combinator: 'and' | 'or' } | null {
+  const parts: string[] = []
+  const combinators: ('and' | 'or')[] = []
+  let current = ''
+  let inQuote = false
+  let quoteChar = ''
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i] as string
+    if (inQuote) {
+      current += ch
+      if (ch === quoteChar) inQuote = false
+      continue
+    }
+    if (ch === '"' || ch === "'") {
+      inQuote = true
+      quoteChar = ch
+      current += ch
+      continue
+    }
+    const rest = body.slice(i)
+    const andMatch = rest.match(/^\s+and\s+/i)
+    const orMatch = rest.match(/^\s+or\s+/i)
+    if (andMatch) {
+      parts.push(current.trim())
+      combinators.push('and')
+      current = ''
+      i += andMatch[0].length - 1
+      continue
+    }
+    if (orMatch) {
+      parts.push(current.trim())
+      combinators.push('or')
+      current = ''
+      i += orMatch[0].length - 1
+      continue
+    }
+    current += ch
+  }
+  if (current.trim()) {
+    parts.push(current.trim())
+  }
+  if (parts.length < 2 || combinators.length === 0) {
+    return null
+  }
+  return { clauses: parts, combinator: combinators[0] as 'and' | 'or' }
+}
+
+function parseConditionalStep(input: string): { commandInput: string; condition?: TaskStepCondition | TaskStepCompoundCondition } {
+  const match = input.match(/^when\s+(.+)\s+then\s+(.+)$/i)
   if (!match) {
     return { commandInput: input }
   }
-
-  const source = match[1]?.trim()
-  const rawOperator = match[2]?.toLowerCase()
-  const operator = rawOperator === 'startswith'
-    ? 'startsWith'
-    : rawOperator === 'endswith'
-      ? 'endsWith'
-      : rawOperator === 'notcontains'
-        ? 'notContains'
-        : rawOperator === 'notequals'
-          ? 'notEquals'
-          : rawOperator === 'notmatches'
-            ? 'notMatches'
-      : rawOperator as TaskStepCondition['operator']
-  const value = normalizeConditionValue(match[3] ?? '')
-  const commandInput = match[4]?.trim()
-  if (!source || !commandInput) {
+  const condBody = match[1]?.trim()
+  const commandInput = match[2]?.trim()
+  if (!condBody || !commandInput) {
     return { commandInput: input }
   }
 
-  return {
-    commandInput,
-    condition: {
-      source,
-      operator,
-      value,
-    },
+  const splitResult = splitOnCombinator(condBody)
+  if (splitResult) {
+    const clauses = splitResult.clauses
+      .map(c => parseSingleConditionClause(c))
+      .filter((c): c is TaskStepCondition => c !== null)
+    if (clauses.length >= 2) {
+      return {
+        commandInput,
+        condition: { combinator: splitResult.combinator, clauses },
+      }
+    }
   }
+
+  const condition = parseSingleConditionClause(condBody)
+  if (!condition) {
+    return { commandInput: input }
+  }
+  return { commandInput, condition }
 }
 
 function splitStageSegments(body: string): string[] {
