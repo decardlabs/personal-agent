@@ -8,7 +8,14 @@ The format is based on Keep a Changelog and Semantic Versioning.
 
 ### Added
 
+- Task-level state machine with checkpoint persistence tables and repository support.
+- `/task`, `/task latest`, `/task checkpoints <taskId>`, and `/task resume <taskId>` utility commands.
+- Shared task resume helper reused by CLI and replay runner.
+- Replay coverage for checkpoint timeout -> resume -> complete flow.
+
 ### Changed
+
+- Diagnostics, status panel, and dashboard now expose task metrics (total, active, failed, latest checkpoint).
 
 ### Fixed
 
