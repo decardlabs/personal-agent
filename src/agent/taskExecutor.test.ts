@@ -182,4 +182,79 @@ describe('taskExecutor', () => {
     expect(result.stepResults[1]?.wasSkipped).toBe(false)
     expect(result.stepResults[1]?.response).toBe('Echo: condition-hit')
   })
+
+  it('executes conditional step with startsWith operator', async () => {
+    const plan = parseTaskRunCommand('/task run echo alpha => when step:1.response startsWith "Echo:" then echo starts-hit')
+    if (!plan) {
+      throw new Error('expected task plan')
+    }
+
+    const executedInputs: string[] = []
+    await executeSequentialTaskPlan({
+      plan,
+      sessionId: 'session-task-conditional-starts',
+      buildTurnOptions: () => ({}),
+      runStep: async input => {
+        executedInputs.push(input)
+        return {
+          sessionId: 'session-task-conditional-starts',
+          turnId: `turn-${executedInputs.length}`,
+          response: `Echo: ${input.slice(5)}`,
+        }
+      },
+      checkpointWriter: () => undefined,
+    })
+
+    expect(executedInputs).toEqual(['echo alpha', 'echo starts-hit'])
+  })
+
+  it('executes conditional step with regex matches operator', async () => {
+    const plan = parseTaskRunCommand('/task run echo alpha => when step:1.response matches "alpha$" then echo regex-hit')
+    if (!plan) {
+      throw new Error('expected task plan')
+    }
+
+    const executedInputs: string[] = []
+    await executeSequentialTaskPlan({
+      plan,
+      sessionId: 'session-task-conditional-regex',
+      buildTurnOptions: () => ({}),
+      runStep: async input => {
+        executedInputs.push(input)
+        return {
+          sessionId: 'session-task-conditional-regex',
+          turnId: `turn-${executedInputs.length}`,
+          response: `Echo: ${input.slice(5)}`,
+        }
+      },
+      checkpointWriter: () => undefined,
+    })
+
+    expect(executedInputs).toEqual(['echo alpha', 'echo regex-hit'])
+  })
+
+  it('executes conditional step with numeric comparator operator', async () => {
+    const plan = parseTaskRunCommand('/task run echo 7 => when step:1.response gte 7 then echo numeric-hit')
+    if (!plan) {
+      throw new Error('expected task plan')
+    }
+
+    const executedInputs: string[] = []
+    await executeSequentialTaskPlan({
+      plan,
+      sessionId: 'session-task-conditional-numeric',
+      buildTurnOptions: () => ({}),
+      runStep: async input => {
+        executedInputs.push(input)
+        return {
+          sessionId: 'session-task-conditional-numeric',
+          turnId: `turn-${executedInputs.length}`,
+          response: `Echo: ${input.slice(5)}`,
+        }
+      },
+      checkpointWriter: () => undefined,
+    })
+
+    expect(executedInputs).toEqual(['echo 7', 'echo numeric-hit'])
+  })
 })

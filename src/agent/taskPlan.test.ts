@@ -39,6 +39,24 @@ describe('taskPlan', () => {
     })
   })
 
+  it('parses extended condition operators including numeric comparators', () => {
+    const plan = parseTaskRunCommand('/task run echo 7 => when step:1.response gt 5 then echo large')
+
+    expect(plan).not.toBeNull()
+    expect(plan?.steps[1]?.condition).toEqual({
+      source: 'step:1.response',
+      operator: 'gt',
+      value: '5',
+    })
+  })
+
+  it('normalizes startsWith and endsWith operators', () => {
+    const plan = parseTaskRunCommand('/task run echo alpha => when step:1.response startsWith "Echo" then echo good')
+
+    expect(plan).not.toBeNull()
+    expect(plan?.steps[1]?.condition?.operator).toBe('startsWith')
+  })
+
   it('returns null for invalid or single-step commands', () => {
     expect(parseTaskRunCommand('/task run')).toBeNull()
     expect(parseTaskRunCommand('/task run echo only')).toBeNull()

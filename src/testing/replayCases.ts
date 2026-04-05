@@ -243,4 +243,18 @@ export const replayCases: ReplayCase[] = [
       String.raw`^Task 'task-[^']+' finished with status completed\.\n- mode: sequential\n- progress: 3/3\n- step 1 \(stage-1-step-1\): completed \| Echo: alpha\n- step 2 \(stage-2-step-1\): skipped \| Step skipped: condition not met \(step:1.response contains "missing-token"\)\n- step 3 \(stage-3-step-1\): completed \| Echo: final$`,
     ],
   },
+  {
+    name: 'task run executes conditional regex step when rule matches',
+    sessionId: 'replay-session-20',
+    steps: [
+      {
+        input: '/task run echo alpha => when step:1.response matches "alpha$" then echo regex-ok',
+        memoryIntent: 'not_required',
+      },
+    ],
+    expectedResponses: ['dynamic-response-handled-by-pattern'],
+    expectedResponsePatterns: [
+      String.raw`^Task 'task-[^']+' finished with status completed\.\n- mode: sequential\n- progress: 2/2\n- step 1 \(stage-1-step-1\): completed \| Echo: alpha\n- step 2 \(stage-2-step-1\): completed \| Echo: regex-ok$`,
+    ],
+  },
 ]

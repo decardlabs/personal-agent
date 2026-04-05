@@ -16,20 +16,38 @@ export type TaskPlan = {
 
 export type TaskStepCondition = {
   source: string
-  operator: 'contains' | 'equals'
+  operator: 'contains' | 'equals' | 'startsWith' | 'endsWith' | 'matches' | 'gt' | 'gte' | 'lt' | 'lte'
   value: string
 }
 
+function normalizeConditionValue(rawValue: string): string {
+  const trimmed = rawValue.trim()
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"'))
+    || (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1)
+  }
+  return trimmed
+}
+
 function parseConditionalStep(input: string): { commandInput: string; condition?: TaskStepCondition } {
-  const match = input.match(/^when\s+([^\s]+)\s+(contains|equals)\s+(["'])(.*?)\3\s+then\s+(.+)$/i)
+  const match = input.match(
+    /^when\s+([^\s]+)\s+(contains|equals|startswith|endswith|matches|gt|gte|lt|lte)\s+(.+?)\s+then\s+(.+)$/i,
+  )
   if (!match) {
     return { commandInput: input }
   }
 
   const source = match[1]?.trim()
-  const operator = match[2]?.toLowerCase() as 'contains' | 'equals'
-  const value = match[4] ?? ''
-  const commandInput = match[5]?.trim()
+  const rawOperator = match[2]?.toLowerCase()
+  const operator = rawOperator === 'startswith'
+    ? 'startsWith'
+    : rawOperator === 'endswith'
+      ? 'endsWith'
+      : rawOperator as TaskStepCondition['operator']
+  const value = normalizeConditionValue(match[3] ?? '')
+  const commandInput = match[4]?.trim()
   if (!source || !commandInput) {
     return { commandInput: input }
   }

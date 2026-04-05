@@ -204,12 +204,60 @@ function resolveConditionSource(source: string, completedSteps: TaskExecutionSte
   return ''
 }
 
+function tryParseNumber(value: string): number | null {
+  const direct = Number(value.trim())
+  if (Number.isFinite(direct)) {
+    return direct
+  }
+
+  const match = value.match(/-?\d+(?:\.\d+)?/)
+  if (!match) {
+    return null
+  }
+  const parsed = Number(match[0])
+  return Number.isFinite(parsed) ? parsed : null
+}
+
 function evaluateCondition(condition: TaskStepCondition, completedSteps: TaskExecutionStepResult[]): boolean {
   const sourceValue = resolveConditionSource(condition.source, completedSteps)
   if (condition.operator === 'contains') {
     return sourceValue.includes(condition.value)
   }
-  return sourceValue === condition.value
+  if (condition.operator === 'equals') {
+    return sourceValue === condition.value
+  }
+  if (condition.operator === 'startsWith') {
+    return sourceValue.startsWith(condition.value)
+  }
+  if (condition.operator === 'endsWith') {
+    return sourceValue.endsWith(condition.value)
+  }
+  if (condition.operator === 'matches') {
+    try {
+      return new RegExp(condition.value).test(sourceValue)
+    } catch {
+      return false
+    }
+  }
+
+  const left = tryParseNumber(sourceValue)
+  const right = tryParseNumber(condition.value)
+  if (left === null || right === null) {
+    return false
+  }
+  if (condition.operator === 'gt') {
+    return left > right
+  }
+  if (condition.operator === 'gte') {
+    return left >= right
+  }
+  if (condition.operator === 'lt') {
+    return left < right
+  }
+  if (condition.operator === 'lte') {
+    return left <= right
+  }
+  return false
 }
 
 export async function executeSequentialTaskPlan(args: {
