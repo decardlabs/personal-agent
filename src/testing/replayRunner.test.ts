@@ -12,7 +12,14 @@ describe('replay suite', () => {
       const result = await runReplayCase(testCase)
       const responses = result.stepResults.map(step => step.response)
 
-      expect(responses).toEqual(testCase.expectedResponses)
+      if (testCase.expectedResponsePatterns) {
+        expect(testCase.expectedResponsePatterns).toHaveLength(responses.length)
+        for (const [index, pattern] of testCase.expectedResponsePatterns.entries()) {
+          expect(responses[index]).toMatch(new RegExp(pattern))
+        }
+      } else {
+        expect(responses).toEqual(testCase.expectedResponses)
+      }
 
       if (testCase.expectedEventTypes) {
         const eventTypeMatrix = result.stepResults.map(step =>

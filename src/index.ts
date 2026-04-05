@@ -60,6 +60,8 @@ import {
 } from './cli/colorOutput.js'
 import { renderTerminalDashboard } from './ui/renderers/terminalDashboard.js'
 import { resumeTaskFromLatestCheckpoint } from './agent/taskResume.js'
+import { executeSequentialTaskPlan, formatTaskExecutionResult } from './agent/taskExecutor.js'
+import { parseTaskRunCommand } from './agent/taskPlan.js'
 
 function renderDashboardIfEnabled(
   sessionId: string,
@@ -158,6 +160,31 @@ function buildTaskSummary(
     failedTasks,
     latestTaskId: latestTask?.taskId ?? null,
     latestCheckpointAt,
+  }
+}
+
+function createTaskCheckpointWriter(taskCheckpointRepository: TaskCheckpointRepository) {
+  return (checkpoint: {
+    taskId: string
+    sessionId: string
+    status: 'pending' | 'running' | 'paused' | 'blocked' | 'completed' | 'failed' | 'timeout' | 'cancelled'
+    stepIndex: number
+    payload: Record<string, unknown>
+    createdAt: string
+  }): void => {
+    taskCheckpointRepository.upsertTask(
+      checkpoint.taskId,
+      checkpoint.sessionId,
+      checkpoint.status,
+      checkpoint.createdAt,
+    )
+    taskCheckpointRepository.saveCheckpoint({
+      taskId: checkpoint.taskId,
+      status: checkpoint.status,
+      stepIndex: checkpoint.stepIndex,
+      payload: checkpoint.payload,
+      createdAt: checkpoint.createdAt,
+    })
   }
 }
 
@@ -411,6 +438,31 @@ async function executeUtilityCommand(
       return lines.join('\n')
     }
 
+    if (utilityCommand.id === 'task_run') {
+      const plan = parseTaskRunCommand(raw)
+      if (!plan) {
+        return colorWarn('Usage: /task run <step1> => <step2> [=> <step3> ...]')
+      }
+
+      const checkpointWriter = createTaskCheckpointWriter(taskCheckpointRepository)
+      const taskResult = await executeSequentialTaskPlan({
+        plan,
+        sessionId,
+        buildTurnOptions,
+        runStep: async (input, options) => runTurn(
+          input,
+          repository,
+          memory,
+          permissionRepository,
+          sessionId,
+          options,
+        ),
+        checkpointWriter,
+      })
+
+      return formatTaskExecutionResult(taskResult)
+    }
+
     if (utilityCommand.id === 'task_latest') {
       const latestTask = taskCheckpointRepository.getLatestTaskBySession(sessionId)
       if (!latestTask) {
@@ -606,21 +658,7 @@ async function main(): Promise<void> {
       approveRisky,
       autoConsolidationConfig,
       taskId,
-      taskCheckpointWriter: checkpoint => {
-        taskCheckpointRepository.upsertTask(
-          checkpoint.taskId,
-          checkpoint.sessionId,
-          checkpoint.status,
-          checkpoint.createdAt,
-        )
-        taskCheckpointRepository.saveCheckpoint({
-          taskId: checkpoint.taskId,
-          status: checkpoint.status,
-          stepIndex: checkpoint.stepIndex,
-          payload: checkpoint.payload,
-          createdAt: checkpoint.createdAt,
-        })
-      },
+      taskCheckpointWriter: createTaskCheckpointWriter(taskCheckpointRepository),
     }
     const managed = buildManagedLLMConfig()
     if (managed && llmApiKey) {

@@ -19,6 +19,7 @@ export type UtilityCommandSpec = {
   | 'why'
   | 'why_json'
   | 'task'
+  | 'task_run'
   | 'task_latest'
   | 'task_checkpoints'
   | 'task_resume'
@@ -142,6 +143,14 @@ const UTILITY_COMMAND_REGISTRY: UtilityCommandSpec[] = [
     id: 'task',
     trigger: '/task',
     description: 'Show recent task checkpoints for current session',
+  },
+  {
+    command: '/task run <step1> => <step2>',
+    id: 'task_run',
+    trigger: '/task run',
+    description: 'Run a minimal sequential multi-step task plan',
+    matchMode: 'prefix',
+    assistTrigger: '/task run',
   },
   {
     command: '/task latest',

@@ -10,6 +10,8 @@ import { ToolPermissionRepository } from '../storage/toolPermissionRepository.js
 import { TaskCheckpointRepository } from '../storage/taskCheckpointRepository.js'
 import { runTurn } from '../agent/runTurn.js'
 import { resumeTaskFromLatestCheckpoint } from '../agent/taskResume.js'
+import { executeSequentialTaskPlan, formatTaskExecutionResult } from '../agent/taskExecutor.js'
+import { parseTaskRunCommand } from '../agent/taskPlan.js'
 import type { TurnEvent, TurnEventType } from '../agent/types.js'
 import type { ReplayCase } from './replayCases.js'
 
@@ -108,7 +110,23 @@ function compareCaseExpectations(
   result: ReplayCaseResult,
 ): string | null {
   const actualResponses = result.stepResults.map(step => step.response)
-  if (JSON.stringify(actualResponses) !== JSON.stringify(testCase.expectedResponses)) {
+  if (testCase.expectedResponsePatterns) {
+    if (testCase.expectedResponsePatterns.length !== actualResponses.length) {
+      return 'response pattern count mismatch'
+    }
+
+    const patternMismatch = testCase.expectedResponsePatterns.some((pattern, index) => {
+      const actual = actualResponses[index]
+      if (typeof actual !== 'string') {
+        return true
+      }
+      return !new RegExp(pattern).test(actual)
+    })
+
+    if (patternMismatch) {
+      return 'response pattern mismatch'
+    }
+  } else if (JSON.stringify(actualResponses) !== JSON.stringify(testCase.expectedResponses)) {
     return 'response mismatch'
   }
 
@@ -274,6 +292,28 @@ export async function runReplayCase(testCase: ReplayCase): Promise<ReplayCaseRes
   }
 
   const stepResults: ReplayStepResult[] = []
+  const checkpointWriter = (checkpoint: {
+    taskId: string
+    sessionId: string
+    status: 'pending' | 'running' | 'paused' | 'blocked' | 'completed' | 'failed' | 'timeout' | 'cancelled'
+    stepIndex: number
+    payload: Record<string, unknown>
+    createdAt: string
+  }) => {
+    taskCheckpointRepository.upsertTask(
+      checkpoint.taskId,
+      checkpoint.sessionId,
+      checkpoint.status,
+      checkpoint.createdAt,
+    )
+    taskCheckpointRepository.saveCheckpoint({
+      taskId: checkpoint.taskId,
+      status: checkpoint.status,
+      stepIndex: checkpoint.stepIndex,
+      payload: checkpoint.payload,
+      createdAt: checkpoint.createdAt,
+    })
+  }
 
   for (const step of testCase.steps) {
     const searchToolRunner = step.mockSearchOutput
@@ -306,30 +346,34 @@ export async function runReplayCase(testCase: ReplayCase): Promise<ReplayCaseRes
       searchToolRunner,
       readFileToolRunner,
       llmResponder,
-      taskCheckpointWriter: step.taskId
-        ? (checkpoint: {
-          taskId: string
-          sessionId: string
-          status: 'pending' | 'running' | 'paused' | 'blocked' | 'completed' | 'failed' | 'timeout' | 'cancelled'
-          stepIndex: number
-          payload: Record<string, unknown>
-          createdAt: string
-        }) => {
-          taskCheckpointRepository.upsertTask(
-            checkpoint.taskId,
-            checkpoint.sessionId,
-            checkpoint.status,
-            checkpoint.createdAt,
-          )
-          taskCheckpointRepository.saveCheckpoint({
-            taskId: checkpoint.taskId,
-            status: checkpoint.status,
-            stepIndex: checkpoint.stepIndex,
-            payload: checkpoint.payload,
-            createdAt: checkpoint.createdAt,
-          })
-        }
-        : undefined,
+      taskCheckpointWriter: step.taskId ? checkpointWriter : undefined,
+    }
+
+    const plan = parseTaskRunCommand(step.input)
+
+    if (plan) {
+      const taskResult = await executeSequentialTaskPlan({
+        plan,
+        sessionId: testCase.sessionId,
+        buildTurnOptions: () => turnOptions,
+        runStep: async (input, options) => runTurn(
+          input,
+          eventRepository,
+          memory,
+          permissionRepository,
+          testCase.sessionId,
+          options,
+        ),
+        checkpointWriter,
+      })
+
+      stepResults.push({
+        input: step.input,
+        memoryIntent: step.memoryIntent ?? 'neutral',
+        response: formatTaskExecutionResult(taskResult),
+        events: [],
+      })
+      continue
     }
 
     const resumeResult = step.resumeTaskId

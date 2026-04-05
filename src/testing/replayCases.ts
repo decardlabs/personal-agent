@@ -24,6 +24,7 @@ export type ReplayCase = {
   seedPersistentFacts?: ReplayPersistentFactSeed[]
   steps: ReplayStep[]
   expectedResponses: string[]
+  expectedResponsePatterns?: string[]
   expectedEventTypes?: TurnEventType[][]
 }
 
@@ -198,6 +199,20 @@ export const replayCases: ReplayCase[] = [
     expectedResponses: [
       'Turn cancelled: tool execution timed out.',
       "Task 'replay-task-16' resumed from latest checkpoint.\n- checkpoint status: timeout\n- replayed input: echo resume-me\n- result: Echo: resume-me",
+    ],
+  },
+  {
+    name: 'task run executes a sequential multi-step plan',
+    sessionId: 'replay-session-17',
+    steps: [
+      {
+        input: '/task run echo alpha => echo beta',
+        memoryIntent: 'not_required',
+      },
+    ],
+    expectedResponses: ['dynamic-response-handled-by-pattern'],
+    expectedResponsePatterns: [
+      String.raw`^Task 'task-[^']+' finished with status completed\.\n- progress: 2/2\n- step 1: completed \| Echo: alpha\n- step 2: completed \| Echo: beta$`,
     ],
   },
 ]
