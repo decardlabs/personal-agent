@@ -37,6 +37,13 @@ describe('interactionPanels', () => {
         writeDecisionsRejected: 2,
         writeDecisionAcceptanceRate: 0.8,
       },
+      taskSummary: {
+        totalTasks: 4,
+        activeTasks: 1,
+        failedTasks: 1,
+        latestTaskId: 'task-42',
+        latestCheckpointAt: '2026-04-03T00:00:02.000Z',
+      },
       uiState: {
         mode: 'awaiting_input',
         sessionId: 'session-1',
@@ -82,6 +89,8 @@ describe('interactionPanels', () => {
     expect(output).toContain('feature flags: verbose_diag')
     expect(output).toContain('llm: enabled (gpt-4o-mini via preference)')
     expect(output).toContain('memory action: review')
+    expect(output).toContain('tasks: 4 total (1 active, 1 failed)')
+    expect(output).toContain('latest task: task-42')
     expect(output).toContain('latest turn events: 6')
     expect(output).toContain('latest response: LLM says: project is healthy')
   })

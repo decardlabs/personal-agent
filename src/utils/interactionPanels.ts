@@ -11,6 +11,13 @@ export type StatusPanelInput = {
   approveRisky: boolean
   featureFlags: ReadonlySet<FeatureFlag>
   diagnostics: MemoryDiagnostics
+  taskSummary?: {
+    totalTasks: number
+    activeTasks: number
+    failedTasks: number
+    latestTaskId: string | null
+    latestCheckpointAt: string | null
+  }
   llmConfigSnapshot: ManagedLLMConfig | null
   uiState: UIStateSnapshot
 }
@@ -116,6 +123,13 @@ export function buildLatestTurnSummary(turnEvents: TurnEvent[]): StatusPanelInpu
 export function formatStatusPanel(input: StatusPanelInput): string {
   const featureFlags = [...input.featureFlags]
   const ui = getUIStatusSummary(input.uiState)
+  const taskSummary = input.taskSummary ?? {
+    totalTasks: 0,
+    activeTasks: 0,
+    failedTasks: 0,
+    latestTaskId: null,
+    latestCheckpointAt: null,
+  }
   const lines = [
     'Status',
     `- session id: ${input.sessionId}`,
@@ -147,6 +161,9 @@ export function formatStatusPanel(input: StatusPanelInput): string {
   lines.push(`- avg fact confidence: ${input.diagnostics.averageFactConfidence.toFixed(2)}`)
   lines.push(`- memory action: ${input.diagnostics.recommendedAction}`)
   lines.push(`- write decisions: ${input.diagnostics.writeDecisionsTotal} (accept: ${(input.diagnostics.writeDecisionAcceptanceRate * 100).toFixed(0)}%)`)
+  lines.push(`- tasks: ${taskSummary.totalTasks} total (${taskSummary.activeTasks} active, ${taskSummary.failedTasks} failed)`)
+  lines.push(`- latest task: ${taskSummary.latestTaskId ?? '(none)'}`)
+  lines.push(`- latest checkpoint: ${taskSummary.latestCheckpointAt ?? '(none)'}`)
 
   if (ui.lastTurn) {
     lines.push(`- latest turn: ${ui.lastTurn.turnId}`)

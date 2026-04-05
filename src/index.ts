@@ -62,6 +62,7 @@ import { renderTerminalDashboard } from './ui/renderers/terminalDashboard.js'
 
 function renderDashboardIfEnabled(
   sessionId: string,
+  taskCheckpointRepository: TaskCheckpointRepository,
   memory: ReturnType<typeof createMemoryCoordinator>,
   llmConfigSnapshot: ReturnType<typeof resolveManagedLLMConfig> | null,
   uiState: ReturnType<typeof createUIStateStore>,
@@ -71,11 +72,13 @@ function renderDashboardIfEnabled(
     return
   }
 
+  const taskSummary = buildTaskSummary(sessionId, taskCheckpointRepository)
   console.log(renderTerminalDashboard({
     sessionId,
     cwd: process.cwd(),
     featureFlags: flags,
     diagnostics: memory.getDiagnostics(sessionId),
+    taskSummary,
     llmConfigSnapshot,
     uiState: uiState.getState(),
   }))
@@ -128,6 +131,35 @@ function formatResponse(response: string): string {
   return response
 }
 
+function buildTaskSummary(
+  sessionId: string,
+  taskCheckpointRepository: TaskCheckpointRepository,
+): {
+  totalTasks: number
+  activeTasks: number
+  failedTasks: number
+  latestTaskId: string | null
+  latestCheckpointAt: string | null
+} {
+  const tasks = taskCheckpointRepository.listTasksBySession(sessionId, 100)
+  const activeStatuses = new Set(['pending', 'running', 'paused', 'blocked'])
+  const failedStatuses = new Set(['failed', 'timeout', 'cancelled'])
+  const activeTasks = tasks.filter(task => activeStatuses.has(task.status)).length
+  const failedTasks = tasks.filter(task => failedStatuses.has(task.status)).length
+  const latestTask = taskCheckpointRepository.getLatestTaskBySession(sessionId)
+  const latestCheckpointAt = latestTask
+    ? taskCheckpointRepository.getLatestCheckpoint(latestTask.taskId)?.createdAt ?? null
+    : null
+
+  return {
+    totalTasks: tasks.length,
+    activeTasks,
+    failedTasks,
+    latestTaskId: latestTask?.taskId ?? null,
+    latestCheckpointAt,
+  }
+}
+
 async function executeUtilityCommand(
   command: string,
   sessionId: string,
@@ -151,22 +183,26 @@ async function executeUtilityCommand(
     }
 
     if (utilityCommand.id === 'dashboard') {
+      const taskSummary = buildTaskSummary(sessionId, taskCheckpointRepository)
       return renderTerminalDashboard({
         sessionId,
         cwd: process.cwd(),
         featureFlags: flags,
         diagnostics: memory.getDiagnostics(sessionId),
+        taskSummary,
         llmConfigSnapshot,
         uiState: uiState(),
       })
     }
 
     if (utilityCommand.id === 'dashboard_compact' || utilityCommand.id === 'dashboard_detailed') {
+      const taskSummary = buildTaskSummary(sessionId, taskCheckpointRepository)
       return renderTerminalDashboard({
         sessionId,
         cwd: process.cwd(),
         featureFlags: flags,
         diagnostics: memory.getDiagnostics(sessionId),
+        taskSummary,
         llmConfigSnapshot,
         uiState: uiState(),
         mode: utilityCommand.id === 'dashboard_compact' ? 'compact' : 'detailed',
@@ -175,12 +211,14 @@ async function executeUtilityCommand(
 
     if (utilityCommand.id === 'status') {
       const diagnostics = memory.getDiagnostics(sessionId)
+      const taskSummary = buildTaskSummary(sessionId, taskCheckpointRepository)
       return formatStatusPanel({
         sessionId,
         cwd: process.cwd(),
         approveRisky,
         featureFlags: flags,
         diagnostics,
+        taskSummary,
         llmConfigSnapshot,
         uiState: uiState(),
       })
@@ -280,6 +318,7 @@ async function executeUtilityCommand(
 
     if (utilityCommand.id === 'diag') {
       const diagnostics = memory.getDiagnostics(sessionId)
+      const taskSummary = buildTaskSummary(sessionId, taskCheckpointRepository)
       const lines = [
         colorCommand('Diagnostics'),
         `- history turns: ${diagnostics.historyTurns}`,
@@ -291,6 +330,9 @@ async function executeUtilityCommand(
         `- recommended action: ${diagnostics.recommendedAction}`,
         `- write decisions: ${diagnostics.writeDecisionsTotal} total (${diagnostics.writeDecisionsAllowed} allowed, ${diagnostics.writeDecisionsRejected} rejected)`,
         `- write acceptance rate: ${(diagnostics.writeDecisionAcceptanceRate * 100).toFixed(1)}%`,
+        `- tasks: ${taskSummary.totalTasks} total (${taskSummary.activeTasks} active, ${taskSummary.failedTasks} failed)`,
+        `- latest task: ${taskSummary.latestTaskId ?? '(none)'}`,
+        `- latest checkpoint: ${taskSummary.latestCheckpointAt ?? '(none)'}`,
       ]
       if (isFeatureEnabled('verbose_diag', flags)) {
         const rankedFacts = memory.persistent.listRankedFacts().slice(0, 10)
@@ -312,10 +354,12 @@ async function executeUtilityCommand(
 
     if (utilityCommand.id === 'diag_json') {
       const diagnostics = memory.getDiagnostics(sessionId)
+      const taskSummary = buildTaskSummary(sessionId, taskCheckpointRepository)
       const payload: Record<string, unknown> = {
         sessionId,
         generatedAt: new Date().toISOString(),
         diagnostics,
+        taskSummary,
       }
       if (isFeatureEnabled('verbose_diag', flags)) {
         payload['rankedFacts'] = memory.persistent.listRankedFacts().slice(0, 10)
@@ -629,7 +673,7 @@ async function main(): Promise<void> {
 
   if (hasInput) {
     initializeOneshotUI(uiState, parsedInput)
-    renderDashboardIfEnabled('oneshot', memory, buildManagedLLMConfig(), uiState, featureFlags)
+    renderDashboardIfEnabled('oneshot', taskCheckpointRepository, memory, buildManagedLLMConfig(), uiState, featureFlags)
     const matchedUtility = findUtilityCommandByInput(parsedInput)
     const utilityOutput = await executeUtilityCommand(
       parsedInput,
@@ -646,14 +690,14 @@ async function main(): Promise<void> {
     )
     if (utilityOutput !== null) {
       completeUtilityExecution(uiState, matchedUtility, parsedInput, utilityOutput, 'stopped')
-      renderDashboardIfEnabled('oneshot', memory, buildManagedLLMConfig(), uiState, featureFlags)
+      renderDashboardIfEnabled('oneshot', taskCheckpointRepository, memory, buildManagedLLMConfig(), uiState, featureFlags)
       console.log(utilityOutput)
       return
     }
 
     if (maybePrintCommandAssist(parsedInput)) {
       recordCommandAssist(uiState, parsedInput, 'stopped')
-      renderDashboardIfEnabled('oneshot', memory, buildManagedLLMConfig(), uiState, featureFlags)
+      renderDashboardIfEnabled('oneshot', taskCheckpointRepository, memory, buildManagedLLMConfig(), uiState, featureFlags)
       return
     }
 
@@ -671,7 +715,7 @@ async function main(): Promise<void> {
 
     const events = repository.listByTurn(result.sessionId, result.turnId)
     completeTurnExecution(uiState, parsedInput, result.turnId, result.response, events.length, 'stopped', result.sessionId)
-    renderDashboardIfEnabled(result.sessionId, memory, buildManagedLLMConfig(), uiState, featureFlags)
+    renderDashboardIfEnabled(result.sessionId, taskCheckpointRepository, memory, buildManagedLLMConfig(), uiState, featureFlags)
     logger.info(
       {
         sessionId: result.sessionId,
@@ -691,7 +735,7 @@ async function main(): Promise<void> {
     { sessionId },
     'interactive mode started'
   )
-  renderDashboardIfEnabled(sessionId, memory, buildManagedLLMConfig(), uiState, featureFlags)
+  renderDashboardIfEnabled(sessionId, taskCheckpointRepository, memory, buildManagedLLMConfig(), uiState, featureFlags)
   console.log(colorInfo(QUICK_HELP))
 
   while (true) {
@@ -705,7 +749,7 @@ async function main(): Promise<void> {
     const matchedCommand = findUtilityCommandByInput(line)
     if (matchedCommand && (matchedCommand.id === 'exit' || matchedCommand.id === 'quit')) {
       handleExitCommand(uiState, matchedCommand, line)
-      renderDashboardIfEnabled(sessionId, memory, buildManagedLLMConfig(), uiState, featureFlags)
+      renderDashboardIfEnabled(sessionId, taskCheckpointRepository, memory, buildManagedLLMConfig(), uiState, featureFlags)
       logger.info({ sessionId }, 'interactive mode stopped')
       break
     }
@@ -726,14 +770,14 @@ async function main(): Promise<void> {
     )
     if (utilityOutput !== null) {
       completeUtilityExecution(uiState, matchedCommand, line, utilityOutput, 'awaiting_input')
-      renderDashboardIfEnabled(sessionId, memory, buildManagedLLMConfig(), uiState, featureFlags)
+      renderDashboardIfEnabled(sessionId, taskCheckpointRepository, memory, buildManagedLLMConfig(), uiState, featureFlags)
       console.log(utilityOutput)
       continue
     }
 
     if (maybePrintCommandAssist(line)) {
       recordCommandAssist(uiState, line, 'awaiting_input')
-      renderDashboardIfEnabled(sessionId, memory, buildManagedLLMConfig(), uiState, featureFlags)
+      renderDashboardIfEnabled(sessionId, taskCheckpointRepository, memory, buildManagedLLMConfig(), uiState, featureFlags)
       continue
     }
 
@@ -754,7 +798,7 @@ async function main(): Promise<void> {
 
     const events = repository.listByTurn(result.sessionId, result.turnId)
     completeTurnExecution(uiState, line, result.turnId, result.response, events.length, 'awaiting_input')
-    renderDashboardIfEnabled(sessionId, memory, buildManagedLLMConfig(), uiState, featureFlags)
+    renderDashboardIfEnabled(sessionId, taskCheckpointRepository, memory, buildManagedLLMConfig(), uiState, featureFlags)
     logger.info(
       {
         sessionId: result.sessionId,

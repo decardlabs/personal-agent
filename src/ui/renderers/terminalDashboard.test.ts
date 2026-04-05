@@ -14,10 +14,19 @@ describe('terminalDashboard', () => {
         staleFactCount: 1,
         lowConfidenceFactCount: 1,
         averageFactConfidence: 0.82,
-        recommendedAction: 'review',        writeDecisionsTotal: 5,
+        recommendedAction: 'review',
+        writeDecisionsTotal: 5,
         writeDecisionsAllowed: 5,
         writeDecisionsRejected: 0,
-        writeDecisionAcceptanceRate: 1,      },
+        writeDecisionAcceptanceRate: 1,
+      },
+      taskSummary: {
+        totalTasks: 3,
+        activeTasks: 1,
+        failedTasks: 1,
+        latestTaskId: 'task-9',
+        latestCheckpointAt: '2026-04-03T00:00:04.000Z',
+      },
       llmConfigSnapshot: {
         model: 'gpt-4o-mini',
         source: 'preference',
@@ -79,6 +88,8 @@ describe('terminalDashboard', () => {
     expect(output).toContain('gpt-4o-mini via preference')
     expect(output).toContain('stale facts')
     expect(output).toContain('avg confidence')
+    expect(output).toContain('tasks')
+    expect(output).toContain('2026-04-03T00:00:04.000Z')
 
     const summaryLine = output.split('\n').find(line => line.includes('[MEMORY:WARN]'))
     expect(summaryLine).toBeDefined()
@@ -107,6 +118,17 @@ describe('terminalDashboard', () => {
         lowConfidenceFactCount: 1,
         averageFactConfidence: 0.82,
         recommendedAction: 'review',
+        writeDecisionsTotal: 4,
+        writeDecisionsAllowed: 3,
+        writeDecisionsRejected: 1,
+        writeDecisionAcceptanceRate: 0.75,
+      },
+      taskSummary: {
+        totalTasks: 2,
+        activeTasks: 1,
+        failedTasks: 0,
+        latestTaskId: 'task-compact',
+        latestCheckpointAt: '2026-04-03T00:00:04.000Z',
       },
       llmConfigSnapshot: {
         model: 'gpt-4o-mini',
@@ -182,6 +204,10 @@ describe('terminalDashboard', () => {
         lowConfidenceFactCount: 1,
         averageFactConfidence: 0.82,
         recommendedAction: 'review',
+        writeDecisionsTotal: 2,
+        writeDecisionsAllowed: 2,
+        writeDecisionsRejected: 0,
+        writeDecisionAcceptanceRate: 1,
       },
       llmConfigSnapshot: {
         model: 'gpt-4o-mini',
@@ -228,7 +254,11 @@ describe('terminalDashboard', () => {
         staleFactCount: 0,
         lowConfidenceFactCount: 0,
         averageFactConfidence: 0,
-        recommendedAction: 'none',
+        recommendedAction: 'ok',
+        writeDecisionsTotal: 0,
+        writeDecisionsAllowed: 0,
+        writeDecisionsRejected: 0,
+        writeDecisionAcceptanceRate: 1,
       },
       llmConfigSnapshot: null,
       uiState: {

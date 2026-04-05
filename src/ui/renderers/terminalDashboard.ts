@@ -12,6 +12,13 @@ export type TerminalDashboardInput = {
   cwd: string
   featureFlags: ReadonlySet<FeatureFlag>
   diagnostics: MemoryDiagnostics
+  taskSummary?: {
+    totalTasks: number
+    activeTasks: number
+    failedTasks: number
+    latestTaskId: string | null
+    latestCheckpointAt: string | null
+  }
   llmConfigSnapshot: ManagedLLMConfig | null
   uiState: UIStateSnapshot
   mode?: 'standard' | 'compact' | 'detailed'
@@ -347,6 +354,13 @@ const SECTION_MIN_ROWS: Record<NonNullable<TerminalDashboardInput['mode']>, {
 
 export function renderTerminalDashboard(input: TerminalDashboardInput): string {
   const ui = getUIStatusSummary(input.uiState)
+  const taskSummary = input.taskSummary ?? {
+    totalTasks: 0,
+    activeTasks: 0,
+    failedTasks: 0,
+    latestTaskId: null,
+    latestCheckpointAt: null,
+  }
   const flags = [...input.featureFlags]
   const flagSet = input.featureFlags
   const mode = input.mode ?? 'standard'
@@ -374,6 +388,7 @@ export function renderTerminalDashboard(input: TerminalDashboardInput): string {
     { label: 'last command', value: ui.lastCommand?.commandId ?? ui.lastCommand?.input ?? '(none)' },
     { label: 'last turn', value: ui.lastTurn?.turnId ?? '(none)' },
     { label: 'last response', value: ui.lastTurn?.responsePreview ?? '(none)' },
+    { label: 'latest task', value: taskSummary.latestTaskId ?? '(none)' },
   ]
 
   const memoryRows = [
@@ -384,6 +399,9 @@ export function renderTerminalDashboard(input: TerminalDashboardInput): string {
     { label: 'low-conf facts', value: String(input.diagnostics.lowConfidenceFactCount) },
     { label: 'avg confidence', value: input.diagnostics.averageFactConfidence.toFixed(2) },
     { label: 'write decisions', value: `${input.diagnostics.writeDecisionsTotal} (${(input.diagnostics.writeDecisionAcceptanceRate * 100).toFixed(0)}% accepted)` },
+    { label: 'tasks', value: `${taskSummary.totalTasks} total (${taskSummary.activeTasks} active)` },
+    { label: 'task failures', value: String(taskSummary.failedTasks) },
+    { label: 'latest checkpoint', value: taskSummary.latestCheckpointAt ?? '(none)' },
   ]
 
   const llmRows = [
