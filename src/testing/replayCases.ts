@@ -229,4 +229,18 @@ export const replayCases: ReplayCase[] = [
       String.raw`^Task 'task-[^']+' finished with status completed\.\n- mode: dependency_graph\n- progress: 4/4\n- step 1 \(stage-1-step-1\): completed \| Echo: prepare\n- step 2 \(stage-2-step-1\): completed \| Echo: lint\n- step 3 \(stage-2-step-2\): completed \| Echo: test\n- step 4 \(stage-3-step-1\): completed \| Echo: release$`,
     ],
   },
+  {
+    name: 'task run skips conditional step when rule does not match',
+    sessionId: 'replay-session-19',
+    steps: [
+      {
+        input: '/task run echo alpha => when step:1.response contains "missing-token" then echo should-not-run => echo final',
+        memoryIntent: 'not_required',
+      },
+    ],
+    expectedResponses: ['dynamic-response-handled-by-pattern'],
+    expectedResponsePatterns: [
+      String.raw`^Task 'task-[^']+' finished with status completed\.\n- mode: sequential\n- progress: 3/3\n- step 1 \(stage-1-step-1\): completed \| Echo: alpha\n- step 2 \(stage-2-step-1\): skipped \| Step skipped: condition not met \(step:1.response contains "missing-token"\)\n- step 3 \(stage-3-step-1\): completed \| Echo: final$`,
+    ],
+  },
 ]

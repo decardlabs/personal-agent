@@ -26,6 +26,19 @@ describe('taskPlan', () => {
     ])
   })
 
+  it('parses conditional steps with when/then syntax', () => {
+    const plan = parseTaskRunCommand('/task run echo seed => when step:1.response contains "seed" then echo ready')
+
+    expect(plan).not.toBeNull()
+    expect(plan?.steps).toHaveLength(2)
+    expect(plan?.steps[1]?.input).toBe('echo ready')
+    expect(plan?.steps[1]?.condition).toEqual({
+      source: 'step:1.response',
+      operator: 'contains',
+      value: 'seed',
+    })
+  })
+
   it('returns null for invalid or single-step commands', () => {
     expect(parseTaskRunCommand('/task run')).toBeNull()
     expect(parseTaskRunCommand('/task run echo only')).toBeNull()

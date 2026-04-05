@@ -1,5 +1,5 @@
 import type { TurnOptions, TurnResult } from './runTurn.js'
-import type { TaskPlan, TaskPlanStep } from './taskPlan.js'
+import type { TaskPlan, TaskPlanStep, TaskStepCondition } from './taskPlan.js'
 import type { TaskState } from './taskStateMachine.js'
 
 export type TaskSequenceCheckpointPhase =
@@ -25,6 +25,7 @@ export type TaskExecutionStepResult = {
   input: string
   response: string
   status: TaskState
+  wasSkipped?: boolean
 }
 
 export type TaskExecutionSummary = {
@@ -55,11 +56,13 @@ export type TaskSequenceCheckpointPayload = {
     label: string
     input: string
     dependsOn: string[]
+    condition?: TaskStepCondition
   }>
   completedSteps: Array<{
     id: string
     label: string
     response: string
+    wasSkipped?: boolean
   }>
   completedStepIds: string[]
   lastResponse: string | null
@@ -109,6 +112,7 @@ function createSequencePayload(args: {
       label: step.label,
       input: step.input,
       dependsOn: [...step.dependsOn],
+      condition: step.condition,
     })),
     completedSteps: args.completedSteps
       .filter(step => step.status === 'completed')
@@ -116,6 +120,7 @@ function createSequencePayload(args: {
         id: step.stepId,
         label: step.label,
         response: step.response,
+        wasSkipped: step.wasSkipped,
       })),
     completedStepIds: args.completedStepIds,
     lastResponse: args.lastResponse ?? null,
@@ -163,18 +168,48 @@ function resolveStepInputTemplate(inputTemplate: string, completedSteps: TaskExe
       return lastResponse ?? ''
     }
 
-    const labelToken = token.match(/^step:([a-zA-Z0-9_-]+)\.response$/)
-    if (labelToken) {
-      return byLabel.get(labelToken[1] ?? '') ?? ''
-    }
-
     const indexToken = token.match(/^step:(\d+)\.response$/)
     if (indexToken) {
       return byStepIndex.get(indexToken[1] ?? '') ?? ''
     }
 
+    const labelToken = token.match(/^step:([a-zA-Z0-9_-]+)\.response$/)
+    if (labelToken) {
+      return byLabel.get(labelToken[1] ?? '') ?? ''
+    }
+
     return ''
   })
+}
+
+function resolveConditionSource(source: string, completedSteps: TaskExecutionStepResult[]): string {
+  if (source === 'last.response') {
+    return completedSteps.length > 0
+      ? (completedSteps[completedSteps.length - 1]?.response ?? '')
+      : ''
+  }
+
+  const indexToken = source.match(/^step:(\d+)\.response$/)
+  if (indexToken) {
+    const step = completedSteps.find(item => String(item.stepIndex) === (indexToken[1] ?? ''))
+    return step?.response ?? ''
+  }
+
+  const labelToken = source.match(/^step:([a-zA-Z0-9_-]+)\.response$/)
+  if (labelToken) {
+    const step = completedSteps.find(item => item.label === (labelToken[1] ?? ''))
+    return step?.response ?? ''
+  }
+
+  return ''
+}
+
+function evaluateCondition(condition: TaskStepCondition, completedSteps: TaskExecutionStepResult[]): boolean {
+  const sourceValue = resolveConditionSource(condition.source, completedSteps)
+  if (condition.operator === 'contains') {
+    return sourceValue.includes(condition.value)
+  }
+  return sourceValue === condition.value
 }
 
 export async function executeSequentialTaskPlan(args: {
@@ -253,8 +288,18 @@ export async function executeSequentialTaskPlan(args: {
         taskId: undefined,
         taskCheckpointWriter: undefined,
       }
-      const result = await args.runStep(renderedInput, turnOptions)
-      const status = classifyResponseStatus(result.response)
+      const isConditionMatched = step.condition ? evaluateCondition(step.condition, stepResults) : true
+      let status: TaskState = 'completed'
+      let response = ''
+
+      if (!isConditionMatched) {
+        status = 'completed'
+        response = `Step skipped: condition not met (${step.condition?.source} ${step.condition?.operator} "${step.condition?.value}")`
+      } else {
+        const result = await args.runStep(renderedInput, turnOptions)
+        response = result.response
+        status = classifyResponseStatus(response)
+      }
 
       stepResults.push({
         stepId: step.id,
@@ -262,8 +307,9 @@ export async function executeSequentialTaskPlan(args: {
         stepIndex,
         inputTemplate: step.input,
         input: renderedInput,
-        response: result.response,
+        response,
         status,
+        wasSkipped: !isConditionMatched,
       })
 
       if (status === 'completed') {
@@ -288,7 +334,7 @@ export async function executeSequentialTaskPlan(args: {
           pendingSteps,
           completedSteps: stepResults,
           completedStepIds: [...completedStepIds],
-          lastResponse: result.response,
+          lastResponse: response,
         }),
         createdAt: new Date().toISOString(),
       })
@@ -330,7 +376,8 @@ export function formatTaskExecutionResult(result: TaskExecutionResult): string {
   ]
 
   for (const step of result.stepResults) {
-    lines.push(`- step ${step.stepIndex} (${step.label}): ${step.status} | ${step.response}`)
+    const renderedStatus = step.wasSkipped ? 'skipped' : step.status
+    lines.push(`- step ${step.stepIndex} (${step.label}): ${renderedStatus} | ${step.response}`)
   }
 
   return lines.join('\n')

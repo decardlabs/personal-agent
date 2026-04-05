@@ -126,4 +126,60 @@ describe('taskExecutor', () => {
     expect(result.stepResults[2]?.inputTemplate).toBe('echo {{last.response}}')
     expect(result.stepResults[2]?.input).toBe('echo Echo: Echo: alpha')
   })
+
+  it('skips a step when condition is not met and continues dependency flow', async () => {
+    const plan = parseTaskRunCommand('/task run echo alpha => when step:1.response contains "missing-token" then echo should-not-run => echo done')
+    if (!plan) {
+      throw new Error('expected task plan')
+    }
+
+    const executedInputs: string[] = []
+    const result = await executeSequentialTaskPlan({
+      plan,
+      sessionId: 'session-task-conditional-skip',
+      buildTurnOptions: () => ({}),
+      runStep: async input => {
+        executedInputs.push(input)
+        return {
+          sessionId: 'session-task-conditional-skip',
+          turnId: `turn-${executedInputs.length}`,
+          response: `Echo: ${input.slice(5)}`,
+        }
+      },
+      checkpointWriter: () => undefined,
+    })
+
+    expect(executedInputs).toEqual(['echo alpha', 'echo done'])
+    expect(result.summary.status).toBe('completed')
+    expect(result.stepResults[1]?.wasSkipped).toBe(true)
+    expect(result.stepResults[1]?.response).toContain('Step skipped: condition not met')
+    expect(formatTaskExecutionResult(result)).toContain('(stage-2-step-1): skipped | Step skipped: condition not met')
+  })
+
+  it('executes conditional steps when condition is met', async () => {
+    const plan = parseTaskRunCommand('/task run echo alpha => when step:1.response contains "alpha" then echo condition-hit')
+    if (!plan) {
+      throw new Error('expected task plan')
+    }
+
+    const executedInputs: string[] = []
+    const result = await executeSequentialTaskPlan({
+      plan,
+      sessionId: 'session-task-conditional-hit',
+      buildTurnOptions: () => ({}),
+      runStep: async input => {
+        executedInputs.push(input)
+        return {
+          sessionId: 'session-task-conditional-hit',
+          turnId: `turn-${executedInputs.length}`,
+          response: `Echo: ${input.slice(5)}`,
+        }
+      },
+      checkpointWriter: () => undefined,
+    })
+
+    expect(executedInputs).toEqual(['echo alpha', 'echo condition-hit'])
+    expect(result.stepResults[1]?.wasSkipped).toBe(false)
+    expect(result.stepResults[1]?.response).toBe('Echo: condition-hit')
+  })
 })

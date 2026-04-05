@@ -5,12 +5,43 @@ export type TaskPlanStep = {
   label: string
   input: string
   dependsOn: string[]
+  condition?: TaskStepCondition
 }
 
 export type TaskPlan = {
   taskId: string
   mode: 'sequential' | 'dependency_graph'
   steps: TaskPlanStep[]
+}
+
+export type TaskStepCondition = {
+  source: string
+  operator: 'contains' | 'equals'
+  value: string
+}
+
+function parseConditionalStep(input: string): { commandInput: string; condition?: TaskStepCondition } {
+  const match = input.match(/^when\s+([^\s]+)\s+(contains|equals)\s+(["'])(.*?)\3\s+then\s+(.+)$/i)
+  if (!match) {
+    return { commandInput: input }
+  }
+
+  const source = match[1]?.trim()
+  const operator = match[2]?.toLowerCase() as 'contains' | 'equals'
+  const value = match[4] ?? ''
+  const commandInput = match[5]?.trim()
+  if (!source || !commandInput) {
+    return { commandInput: input }
+  }
+
+  return {
+    commandInput,
+    condition: {
+      source,
+      operator,
+      value,
+    },
+  }
 }
 
 function splitStageSegments(body: string): string[] {
@@ -53,13 +84,15 @@ export function parseTaskRunCommand(input: string): TaskPlan | null {
     const currentStageStepIds: string[] = []
 
     for (const [stepIndex, stepInput] of stageSteps.entries()) {
+      const parsed = parseConditionalStep(stepInput)
       const id = `${taskId}:step-${steps.length + 1}`
       const label = `stage-${stageIndex + 1}-step-${stepIndex + 1}`
       steps.push({
         id,
         label,
-        input: stepInput,
+        input: parsed.commandInput,
         dependsOn: previousStageStepIds,
+        condition: parsed.condition,
       })
       currentStageStepIds.push(id)
     }

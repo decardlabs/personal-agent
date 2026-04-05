@@ -7,7 +7,7 @@ import {
   type TaskExecutionStepResult,
   type TaskSequenceCheckpointPayload,
 } from './taskExecutor.js'
-import type { TaskPlanStep } from './taskPlan.js'
+import type { TaskPlanStep, TaskStepCondition } from './taskPlan.js'
 import { runTurn, type TurnOptions, type TurnResult } from './runTurn.js'
 import type { TaskState } from './taskStateMachine.js'
 
@@ -48,6 +48,7 @@ function extractPendingSteps(payload: TaskSequenceCheckpointPayload | null, task
         label?: string
         input?: string
         dependsOn?: string[]
+        condition?: TaskStepCondition
       }
       return {
         id: typeof candidate.id === 'string' ? candidate.id : `${taskId}:resume-step-${index + 1}`,
@@ -56,6 +57,7 @@ function extractPendingSteps(payload: TaskSequenceCheckpointPayload | null, task
         dependsOn: Array.isArray(candidate.dependsOn)
           ? candidate.dependsOn.filter(item => typeof item === 'string')
           : [],
+        condition: candidate.condition,
       }
     })
     .filter(step => step.input.length > 0)
@@ -73,6 +75,7 @@ function extractCompletedStepResults(payload: TaskSequenceCheckpointPayload | nu
         id?: string
         label?: string
         response?: string
+        wasSkipped?: boolean
       }
       return {
         stepId: typeof candidate.id === 'string' ? candidate.id : `completed-step-${index + 1}`,
@@ -82,6 +85,7 @@ function extractCompletedStepResults(payload: TaskSequenceCheckpointPayload | nu
         input: '(checkpoint snapshot)',
         response: typeof candidate.response === 'string' ? candidate.response : '',
         status: 'completed' as const,
+        wasSkipped: Boolean(candidate.wasSkipped),
       }
     })
     .filter(step => step.response.length > 0)
