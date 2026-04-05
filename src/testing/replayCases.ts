@@ -257,4 +257,18 @@ export const replayCases: ReplayCase[] = [
       String.raw`^Task 'task-[^']+' finished with status completed\.\n- mode: sequential\n- progress: 2/2\n- step 1 \(stage-1-step-1\): completed \| Echo: alpha\n- step 2 \(stage-2-step-1\): completed \| Echo: regex-ok$`,
     ],
   },
+  {
+    name: 'task run executes negative conditional step when notContains matches',
+    sessionId: 'replay-session-21',
+    steps: [
+      {
+        input: '/task run echo alpha => when step:1.response notContains "beta" then echo neg-ok',
+        memoryIntent: 'not_required',
+      },
+    ],
+    expectedResponses: ['dynamic-response-handled-by-pattern'],
+    expectedResponsePatterns: [
+      String.raw`^Task 'task-[^']+' finished with status completed\.\n- mode: sequential\n- progress: 2/2\n- step 1 \(stage-1-step-1\): completed \| Echo: alpha\n- step 2 \(stage-2-step-1\): completed \| Echo: neg-ok$`,
+    ],
+  },
 ]

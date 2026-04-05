@@ -57,6 +57,17 @@ describe('taskPlan', () => {
     expect(plan?.steps[1]?.condition?.operator).toBe('startsWith')
   })
 
+  it('normalizes negative condition operators', () => {
+    const plan = parseTaskRunCommand('/task run echo alpha => when step:1.response notContains "beta" then echo pass')
+
+    expect(plan).not.toBeNull()
+    expect(plan?.steps[1]?.condition).toEqual({
+      source: 'step:1.response',
+      operator: 'notContains',
+      value: 'beta',
+    })
+  })
+
   it('returns null for invalid or single-step commands', () => {
     expect(parseTaskRunCommand('/task run')).toBeNull()
     expect(parseTaskRunCommand('/task run echo only')).toBeNull()

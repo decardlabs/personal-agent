@@ -441,7 +441,7 @@ async function executeUtilityCommand(
     if (utilityCommand.id === 'task_run') {
       const plan = parseTaskRunCommand(raw)
       if (!plan) {
-        return colorWarn('Usage: /task run <step1> => <step2> [=> <step3> ...] | /task run <step1> => [<branchA> | <branchB>] => <stepN> | /task run <step1> => when step:1.response contains "ok" then <step2>')
+        return colorWarn('Usage: /task run <step1> => <step2> [=> <step3> ...] | /task run <step1> => [<branchA> | <branchB>] => <stepN> | /task run <step1> => when step:1.response contains|notContains|equals|notEquals|matches|notMatches "ok" then <step2>')
       }
 
       const checkpointWriter = createTaskCheckpointWriter(taskCheckpointRepository)

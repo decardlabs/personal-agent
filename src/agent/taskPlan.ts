@@ -16,7 +16,19 @@ export type TaskPlan = {
 
 export type TaskStepCondition = {
   source: string
-  operator: 'contains' | 'equals' | 'startsWith' | 'endsWith' | 'matches' | 'gt' | 'gte' | 'lt' | 'lte'
+  operator:
+  | 'contains'
+  | 'notContains'
+  | 'equals'
+  | 'notEquals'
+  | 'startsWith'
+  | 'endsWith'
+  | 'matches'
+  | 'notMatches'
+  | 'gt'
+  | 'gte'
+  | 'lt'
+  | 'lte'
   value: string
 }
 
@@ -33,7 +45,7 @@ function normalizeConditionValue(rawValue: string): string {
 
 function parseConditionalStep(input: string): { commandInput: string; condition?: TaskStepCondition } {
   const match = input.match(
-    /^when\s+([^\s]+)\s+(contains|equals|startswith|endswith|matches|gt|gte|lt|lte)\s+(.+?)\s+then\s+(.+)$/i,
+    /^when\s+([^\s]+)\s+(contains|notcontains|equals|notequals|startswith|endswith|matches|notmatches|gt|gte|lt|lte)\s+(.+?)\s+then\s+(.+)$/i,
   )
   if (!match) {
     return { commandInput: input }
@@ -45,6 +57,12 @@ function parseConditionalStep(input: string): { commandInput: string; condition?
     ? 'startsWith'
     : rawOperator === 'endswith'
       ? 'endsWith'
+      : rawOperator === 'notcontains'
+        ? 'notContains'
+        : rawOperator === 'notequals'
+          ? 'notEquals'
+          : rawOperator === 'notmatches'
+            ? 'notMatches'
       : rawOperator as TaskStepCondition['operator']
   const value = normalizeConditionValue(match[3] ?? '')
   const commandInput = match[4]?.trim()

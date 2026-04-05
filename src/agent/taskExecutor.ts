@@ -223,8 +223,14 @@ function evaluateCondition(condition: TaskStepCondition, completedSteps: TaskExe
   if (condition.operator === 'contains') {
     return sourceValue.includes(condition.value)
   }
+  if (condition.operator === 'notContains') {
+    return !sourceValue.includes(condition.value)
+  }
   if (condition.operator === 'equals') {
     return sourceValue === condition.value
+  }
+  if (condition.operator === 'notEquals') {
+    return sourceValue !== condition.value
   }
   if (condition.operator === 'startsWith') {
     return sourceValue.startsWith(condition.value)
@@ -235,6 +241,13 @@ function evaluateCondition(condition: TaskStepCondition, completedSteps: TaskExe
   if (condition.operator === 'matches') {
     try {
       return new RegExp(condition.value).test(sourceValue)
+    } catch {
+      return false
+    }
+  }
+  if (condition.operator === 'notMatches') {
+    try {
+      return !new RegExp(condition.value).test(sourceValue)
     } catch {
       return false
     }

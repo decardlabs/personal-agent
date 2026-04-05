@@ -257,4 +257,79 @@ describe('taskExecutor', () => {
 
     expect(executedInputs).toEqual(['echo 7', 'echo numeric-hit'])
   })
+
+  it('executes conditional step with notContains operator', async () => {
+    const plan = parseTaskRunCommand('/task run echo alpha => when step:1.response notContains "beta" then echo neg-contains-hit')
+    if (!plan) {
+      throw new Error('expected task plan')
+    }
+
+    const executedInputs: string[] = []
+    await executeSequentialTaskPlan({
+      plan,
+      sessionId: 'session-task-conditional-not-contains',
+      buildTurnOptions: () => ({}),
+      runStep: async input => {
+        executedInputs.push(input)
+        return {
+          sessionId: 'session-task-conditional-not-contains',
+          turnId: `turn-${executedInputs.length}`,
+          response: `Echo: ${input.slice(5)}`,
+        }
+      },
+      checkpointWriter: () => undefined,
+    })
+
+    expect(executedInputs).toEqual(['echo alpha', 'echo neg-contains-hit'])
+  })
+
+  it('executes conditional step with notEquals operator', async () => {
+    const plan = parseTaskRunCommand('/task run echo alpha => when step:1.response notEquals "Echo: beta" then echo neg-equals-hit')
+    if (!plan) {
+      throw new Error('expected task plan')
+    }
+
+    const executedInputs: string[] = []
+    await executeSequentialTaskPlan({
+      plan,
+      sessionId: 'session-task-conditional-not-equals',
+      buildTurnOptions: () => ({}),
+      runStep: async input => {
+        executedInputs.push(input)
+        return {
+          sessionId: 'session-task-conditional-not-equals',
+          turnId: `turn-${executedInputs.length}`,
+          response: `Echo: ${input.slice(5)}`,
+        }
+      },
+      checkpointWriter: () => undefined,
+    })
+
+    expect(executedInputs).toEqual(['echo alpha', 'echo neg-equals-hit'])
+  })
+
+  it('executes conditional step with notMatches operator', async () => {
+    const plan = parseTaskRunCommand('/task run echo alpha => when step:1.response notMatches "beta$" then echo neg-regex-hit')
+    if (!plan) {
+      throw new Error('expected task plan')
+    }
+
+    const executedInputs: string[] = []
+    await executeSequentialTaskPlan({
+      plan,
+      sessionId: 'session-task-conditional-not-matches',
+      buildTurnOptions: () => ({}),
+      runStep: async input => {
+        executedInputs.push(input)
+        return {
+          sessionId: 'session-task-conditional-not-matches',
+          turnId: `turn-${executedInputs.length}`,
+          response: `Echo: ${input.slice(5)}`,
+        }
+      },
+      checkpointWriter: () => undefined,
+    })
+
+    expect(executedInputs).toEqual(['echo alpha', 'echo neg-regex-hit'])
+  })
 })
