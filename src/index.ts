@@ -59,6 +59,7 @@ import {
   formatPrompt,
 } from './cli/colorOutput.js'
 import { renderTerminalDashboard } from './ui/renderers/terminalDashboard.js'
+import { resumeTaskFromLatestCheckpoint } from './agent/taskResume.js'
 
 function renderDashboardIfEnabled(
   sessionId: string,
@@ -460,44 +461,28 @@ async function executeUtilityCommand(
         return colorWarn('Usage: /task resume <taskId>')
       }
 
-      const latestCheckpoint = taskCheckpointRepository.getLatestCheckpoint(taskId)
-      if (!latestCheckpoint) {
-        return colorInfo(`No checkpoints found for task '${taskId}'.`)
-      }
-
-      if (latestCheckpoint.status === 'completed') {
-        return colorInfo(`Task '${taskId}' is already completed.`)
-      }
-
-      const payload = (
-        latestCheckpoint.payload
-        && typeof latestCheckpoint.payload === 'object'
-      ) ? latestCheckpoint.payload as Record<string, unknown> : {}
-
-      const resumeInput = typeof payload['normalizedInput'] === 'string'
-        ? payload['normalizedInput']
-        : null
-
-      if (!resumeInput) {
-        return colorError(`Task '${taskId}' latest checkpoint does not contain resumable input.`)
-      }
-
-      const resumeOptions = buildTurnOptions()
-      resumeOptions.taskId = taskId
-      const resumed = await runTurn(
-        resumeInput,
+      const resumeResult = await resumeTaskFromLatestCheckpoint({
+        taskId,
+        sessionId,
         repository,
+        taskCheckpointRepository,
         memory,
         permissionRepository,
-        sessionId,
-        resumeOptions,
-      )
+        turnOptions: buildTurnOptions(),
+      })
+
+      if (resumeResult.kind === 'missing_checkpoint' || resumeResult.kind === 'already_completed') {
+        return colorInfo(resumeResult.message)
+      }
+      if (resumeResult.kind === 'not_resumable') {
+        return colorError(resumeResult.message)
+      }
 
       return [
         colorSuccess(`Task '${taskId}' resumed from latest checkpoint.`),
-        `- checkpoint status: ${latestCheckpoint.status}`,
-        `- replayed input: ${resumeInput}`,
-        `- result: ${resumed.response}`,
+        `- checkpoint status: ${resumeResult.checkpointStatus}`,
+        `- replayed input: ${resumeResult.resumedInput}`,
+        `- result: ${resumeResult.turnResult?.response ?? '(none)'}`,
       ].join('\n')
     }
 

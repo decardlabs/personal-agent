@@ -2,6 +2,8 @@ import type { TurnEventType } from '../agent/types.js'
 
 export type ReplayStep = {
   input: string
+  taskId?: string
+  resumeTaskId?: string
   approveRisky?: boolean
   turnTimeoutMs?: number
   mockSearchOutput?: string
@@ -175,5 +177,27 @@ export const replayCases: ReplayCase[] = [
       'llm_result_received',
       'turn_completed',
     ]],
+  },
+  {
+    name: 'task resume replays latest checkpointed input after timeout',
+    sessionId: 'replay-session-16',
+    steps: [
+      {
+        input: 'echo resume-me',
+        taskId: 'replay-task-16',
+        turnTimeoutMs: 0,
+        memoryIntent: 'not_required',
+      },
+      {
+        input: '/task resume replay-task-16',
+        taskId: 'replay-task-16',
+        resumeTaskId: 'replay-task-16',
+        memoryIntent: 'required',
+      },
+    ],
+    expectedResponses: [
+      'Turn cancelled: tool execution timed out.',
+      "Task 'replay-task-16' resumed from latest checkpoint.\n- checkpoint status: timeout\n- replayed input: echo resume-me\n- result: Echo: resume-me",
+    ],
   },
 ]

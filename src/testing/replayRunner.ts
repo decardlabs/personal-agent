@@ -7,7 +7,9 @@ import { PersistentMemoryStore } from '../memory/persistentMemory.js'
 import { createMemoryCoordinator } from '../memory/memoryCoordinator.js'
 import { PreferenceStore } from '../memory/preferenceMemory.js'
 import { ToolPermissionRepository } from '../storage/toolPermissionRepository.js'
+import { TaskCheckpointRepository } from '../storage/taskCheckpointRepository.js'
 import { runTurn } from '../agent/runTurn.js'
+import { resumeTaskFromLatestCheckpoint } from '../agent/taskResume.js'
 import type { TurnEvent, TurnEventType } from '../agent/types.js'
 import type { ReplayCase } from './replayCases.js'
 
@@ -261,6 +263,7 @@ export async function runReplayCase(testCase: ReplayCase): Promise<ReplayCaseRes
   const memoryRepository = new MemoryFactRepository(db)
   const preferenceRepository = new PreferenceRepository(db)
   const permissionRepository = new ToolPermissionRepository(db)
+  const taskCheckpointRepository = new TaskCheckpointRepository(db)
   const memory = createMemoryCoordinator(
     new PersistentMemoryStore(memoryRepository),
     new PreferenceStore(preferenceRepository),
@@ -296,25 +299,72 @@ export async function runReplayCase(testCase: ReplayCase): Promise<ReplayCaseRes
       }
       : undefined
 
-    const turn = await runTurn(
-      step.input,
-      eventRepository,
-      memory,
-      permissionRepository,
-      testCase.sessionId,
-      {
-        approveRisky: step.approveRisky ?? false,
-        turnTimeoutMs: step.turnTimeoutMs,
-        searchToolRunner,
-        readFileToolRunner,
-        llmResponder,
-      },
-    )
+    const turnOptions = {
+      approveRisky: step.approveRisky ?? false,
+      taskId: step.taskId,
+      turnTimeoutMs: step.turnTimeoutMs,
+      searchToolRunner,
+      readFileToolRunner,
+      llmResponder,
+      taskCheckpointWriter: step.taskId
+        ? (checkpoint: {
+          taskId: string
+          sessionId: string
+          status: 'pending' | 'running' | 'paused' | 'blocked' | 'completed' | 'failed' | 'timeout' | 'cancelled'
+          stepIndex: number
+          payload: Record<string, unknown>
+          createdAt: string
+        }) => {
+          taskCheckpointRepository.upsertTask(
+            checkpoint.taskId,
+            checkpoint.sessionId,
+            checkpoint.status,
+            checkpoint.createdAt,
+          )
+          taskCheckpointRepository.saveCheckpoint({
+            taskId: checkpoint.taskId,
+            status: checkpoint.status,
+            stepIndex: checkpoint.stepIndex,
+            payload: checkpoint.payload,
+            createdAt: checkpoint.createdAt,
+          })
+        }
+        : undefined,
+    }
+
+    const resumeResult = step.resumeTaskId
+      ? await resumeTaskFromLatestCheckpoint({
+        taskId: step.resumeTaskId,
+        sessionId: testCase.sessionId,
+        repository: eventRepository,
+        taskCheckpointRepository,
+        memory,
+        permissionRepository,
+        turnOptions,
+      })
+      : null
+
+    const turn = resumeResult
+      ? resumeResult.turnResult ?? {
+        sessionId: testCase.sessionId,
+        turnId: `resume-${step.resumeTaskId}`,
+        response: resumeResult.message,
+      }
+      : await runTurn(
+        step.input,
+        eventRepository,
+        memory,
+        permissionRepository,
+        testCase.sessionId,
+        turnOptions,
+      )
+
+    const response = resumeResult?.message ?? turn.response
 
     stepResults.push({
       input: step.input,
       memoryIntent: step.memoryIntent ?? 'neutral',
-      response: turn.response,
+      response,
       events: eventRepository.listByTurn(turn.sessionId, turn.turnId),
     })
   }
