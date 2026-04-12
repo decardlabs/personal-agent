@@ -278,12 +278,23 @@ function evaluateCondition(
   completedSteps: TaskExecutionStepResult[],
 ): boolean {
   if (isCompoundCondition(condition)) {
-    const evaluate = (c: TaskStepCondition) => evaluateSingleCondition(c, completedSteps)
+    const evaluate = (c: TaskStepCondition | TaskStepCompoundCondition) => evaluateCondition(c, completedSteps)
     return condition.combinator === 'and'
       ? condition.clauses.every(evaluate)
       : condition.clauses.some(evaluate)
   }
   return evaluateSingleCondition(condition, completedSteps)
+}
+
+function formatConditionDesc(cond: TaskStepCondition | TaskStepCompoundCondition): string {
+  if (isCompoundCondition(cond)) {
+    const parts = cond.clauses.map(c => {
+      const desc = formatConditionDesc(c)
+      return isCompoundCondition(c) ? `(${desc})` : desc
+    })
+    return parts.join(` ${cond.combinator} `)
+  }
+  return `${cond.source} ${cond.operator} "${cond.value}"`
 }
 
 export async function executeSequentialTaskPlan(args: {
@@ -369,10 +380,7 @@ export async function executeSequentialTaskPlan(args: {
       if (!isConditionMatched) {
         status = 'completed'
         const cond = step.condition!
-        const condDesc = isCompoundCondition(cond)
-          ? cond.clauses.map(c => `${c.source} ${c.operator} "${c.value}"`).join(` ${cond.combinator} `)
-          : `${cond.source} ${cond.operator} "${cond.value}"`
-        response = `Step skipped: condition not met (${condDesc})`
+        response = `Step skipped: condition not met (${formatConditionDesc(cond)})`
       } else {
         const result = await args.runStep(renderedInput, turnOptions)
         response = result.response

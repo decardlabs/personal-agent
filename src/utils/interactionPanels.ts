@@ -63,6 +63,19 @@ export type TurnExplanation = {
   }
 }
 
+export type DreamMetrics = {
+  limit: number
+  windowLabel: string
+  sampledCount: number
+  totalAttempts: number
+  completed: number
+  skipped: number
+  completionRate: number
+  skipRate: number
+  averageWritesPerAttempt: number
+  reasonCodeHistogram: Record<string, number>
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null ? value as Record<string, unknown> : {}
 }
@@ -102,6 +115,31 @@ function summarizeOutput(value: unknown): string | null {
     return null
   }
   return raw.length <= 120 ? raw : `${raw.slice(0, 117)}...`
+}
+
+function describeMemoryDreamReason(code: string | null): string {
+  switch (code) {
+    case 'TRIGGERED':
+      return 'healthy: dream executed successfully'
+    case 'NO_FACTS':
+      return 'executed: no durable facts extracted'
+    case 'COOLDOWN':
+      return 'wait: dream cooldown window not reached'
+    case 'LOCKED':
+      return 'wait: another dream cycle is in progress'
+    case 'MIN_SESSIONS':
+      return 'collect: more session history required'
+    case 'LLM_OFF':
+      return 'configure: set OPENAI_API_KEY to enable dream synthesis'
+    case 'LLM_FAIL':
+      return 'retry: LLM call failed during dream cycle'
+    case 'DISABLED':
+      return 'disabled: enable memory_dream feature flag'
+    case 'OTHER':
+      return 'inspect: check raw dream reason for details'
+    default:
+      return 'unknown: no dream result recorded yet'
+  }
 }
 
 export function buildLatestTurnSummary(turnEvents: TurnEvent[]): StatusPanelInput['latestTurnSummary'] {
@@ -161,6 +199,12 @@ export function formatStatusPanel(input: StatusPanelInput): string {
   lines.push(`- avg fact confidence: ${input.diagnostics.averageFactConfidence.toFixed(2)}`)
   lines.push(`- memory action: ${input.diagnostics.recommendedAction}`)
   lines.push(`- write decisions: ${input.diagnostics.writeDecisionsTotal} (accept: ${(input.diagnostics.writeDecisionAcceptanceRate * 100).toFixed(0)}%)`)
+  lines.push(`- memory dream last run: ${input.diagnostics.lastMemoryDreamAt ?? '(never)'}`)
+  lines.push(`- memory dream status: ${input.diagnostics.lastMemoryDreamStatus ?? '(unknown)'}`)
+  lines.push(`- memory dream reason code: ${input.diagnostics.lastMemoryDreamReasonCode ?? '(none)'}`)
+  lines.push(`- memory dream reason: ${input.diagnostics.lastMemoryDreamReason ?? '(none)'}`)
+  lines.push(`- memory dream guidance: ${describeMemoryDreamReason(input.diagnostics.lastMemoryDreamReasonCode ?? null)}`)
+  lines.push(`- memory dream last writes: ${input.diagnostics.lastMemoryDreamWriteCount ?? 0}`)
   lines.push(`- tasks: ${taskSummary.totalTasks} total (${taskSummary.activeTasks} active, ${taskSummary.failedTasks} failed)`)
   lines.push(`- latest task: ${taskSummary.latestTaskId ?? '(none)'}`)
   lines.push(`- latest checkpoint: ${taskSummary.latestCheckpointAt ?? '(none)'}`)
@@ -170,6 +214,30 @@ export function formatStatusPanel(input: StatusPanelInput): string {
     lines.push(`- latest turn events: ${ui.lastTurn.eventCount}`)
     lines.push(`- latest response: ${ui.lastTurn.responsePreview}`)
   }
+
+  return lines.join('\n')
+}
+
+export function formatDreamMetricsPanel(metrics: DreamMetrics): string {
+  const reasonEntries = Object.entries(metrics.reasonCodeHistogram)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+
+  const lines = [
+    'Memory Dream Metrics',
+    `- window: ${metrics.windowLabel}`,
+    `- limit: ${metrics.limit}`,
+    `- sampled: ${metrics.sampledCount}`,
+    `- attempts: ${metrics.totalAttempts}`,
+    `- completed: ${metrics.completed}`,
+    `- skipped: ${metrics.skipped}`,
+    `- completion rate: ${(metrics.completionRate * 100).toFixed(1)}%`,
+    `- skip rate: ${(metrics.skipRate * 100).toFixed(1)}%`,
+    `- avg writes/attempt: ${metrics.averageWritesPerAttempt.toFixed(2)}`,
+    '- reason codes:',
+    ...(reasonEntries.length > 0
+      ? reasonEntries.map(([code, count]) => `  - ${code}: ${count}`)
+      : ['  - (none)']),
+  ]
 
   return lines.join('\n')
 }

@@ -22,11 +22,31 @@ export type FeatureFlag =
   | 'ui_tui_mvp'
   /** Reserved: streaming LLM responses (not yet implemented) */
   | 'llm_streaming'
+  /**
+   * Enables multi-step coordinator pattern (Research → Synthesis → Action).
+   * Inspired by Claude-Code Coordinator mode: complex tasks are dispatched to
+   * phase workers instead of being handled in a single turn.
+   */
+  | 'coordinator_mode'
+  /**
+   * Enables periodic background memory consolidation ("dream" cycle).
+   * Inspired by KAIROS autoDream: merges scattered session facts into durable
+   * persistent memory entries on a schedule or session-count threshold.
+   */
+  | 'memory_dream'
+  /**
+   * Verbose tool execution logging: emits tool-call input/output previews
+   * to the structured log at debug level (useful for replay analysis).
+   */
+  | 'verbose_tools'
 
 export const KNOWN_FEATURE_FLAGS: readonly FeatureFlag[] = [
   'verbose_diag',
   'ui_tui_mvp',
   'llm_streaming',
+  'coordinator_mode',
+  'memory_dream',
+  'verbose_tools',
 ]
 
 /**

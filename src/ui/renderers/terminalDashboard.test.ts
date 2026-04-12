@@ -19,6 +19,11 @@ describe('terminalDashboard', () => {
         writeDecisionsAllowed: 5,
         writeDecisionsRejected: 0,
         writeDecisionAcceptanceRate: 1,
+        lastMemoryDreamAt: '2026-04-12T11:30:00.000Z',
+        lastMemoryDreamWriteCount: 2,
+        lastMemoryDreamStatus: 'completed',
+        lastMemoryDreamReason: 'triggered',
+        lastMemoryDreamReasonCode: 'TRIGGERED',
       },
       taskSummary: {
         totalTasks: 3,
@@ -87,6 +92,12 @@ describe('terminalDashboard', () => {
     expect(output).toContain('"t":"slot_min_chars_v1"')
     expect(output).toContain('gpt-4o-mini via preference')
     expect(output).toContain('stale facts')
+    expect(output).toContain('dream last run')
+    expect(output).toContain('dream status')
+    expect(output).toContain('dream code')
+    expect(output).toContain('dream reason')
+    expect(output).toContain('dream hint')
+    expect(output).toContain('dream writes')
     expect(output).toContain('avg confidence')
     expect(output).toContain('tasks')
     expect(output).toContain('2026-04-03T00:00:04.000Z')
@@ -122,6 +133,11 @@ describe('terminalDashboard', () => {
         writeDecisionsAllowed: 3,
         writeDecisionsRejected: 1,
         writeDecisionAcceptanceRate: 0.75,
+        lastMemoryDreamAt: null,
+        lastMemoryDreamWriteCount: 0,
+        lastMemoryDreamStatus: 'skipped',
+        lastMemoryDreamReason: 'too_soon:1000<86400000',
+        lastMemoryDreamReasonCode: 'COOLDOWN',
       },
       taskSummary: {
         totalTasks: 2,
@@ -208,6 +224,11 @@ describe('terminalDashboard', () => {
         writeDecisionsAllowed: 2,
         writeDecisionsRejected: 0,
         writeDecisionAcceptanceRate: 1,
+        lastMemoryDreamAt: null,
+        lastMemoryDreamWriteCount: 0,
+        lastMemoryDreamStatus: null,
+        lastMemoryDreamReason: null,
+        lastMemoryDreamReasonCode: null,
       },
       llmConfigSnapshot: {
         model: 'gpt-4o-mini',
@@ -259,6 +280,11 @@ describe('terminalDashboard', () => {
         writeDecisionsAllowed: 0,
         writeDecisionsRejected: 0,
         writeDecisionAcceptanceRate: 1,
+        lastMemoryDreamAt: null,
+        lastMemoryDreamWriteCount: 0,
+        lastMemoryDreamStatus: null,
+        lastMemoryDreamReason: null,
+        lastMemoryDreamReasonCode: null,
       },
       llmConfigSnapshot: null,
       uiState: {

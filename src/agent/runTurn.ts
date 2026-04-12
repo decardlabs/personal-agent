@@ -3,6 +3,8 @@ import type { SessionEventRepository } from '../storage/sessionEventRepository.j
 import { runEchoTool } from '../tools/echoTool.js'
 import { runSearchTool } from '../tools/searchTool.js'
 import { runReadFileTool } from '../tools/readFileTool.js'
+import { runListDirTool } from '../tools/listDirTool.js'
+import { runOpenUrlTool } from '../tools/openUrlTool.js'
 import { createStateMachine } from './stateMachine.js'
 import type { TurnEvent } from './types.js'
 import {
@@ -11,6 +13,9 @@ import {
   detectReadFileCommand,
   detectSetPreferenceCommand,
   detectGetPreferenceCommand,
+  detectListDirCommand,
+  detectSummarizeCommand,
+  detectOpenUrlCommand,
   normalizeInput,
 } from './inputNormalizer.js'
 import type { MemoryCoordinator, LLMContextBundle } from '../memory/memoryCoordinator.js'
@@ -19,6 +24,18 @@ import type { ManagedLLMConfig } from '../llm/modelManagement.js'
 import { evaluatePermission } from '../policies/permissionPolicy.js'
 import { ToolPermissionRepository } from '../storage/toolPermissionRepository.js'
 import type { TaskState } from './taskStateMachine.js'
+import { isFeatureEnabled } from '../featureFlags.js'
+import { runCoordinatorTurn } from './coordinatorTurn.js'
+import type { MemoryDreamConfig } from './memoryDream.js'
+import { maybeRunMemoryDream } from './memoryDream.js'
+import {
+  buildBuiltInToolCalledPayload,
+  createBuiltInToolRequest,
+  executeBuiltInTool,
+  formatBuiltInToolResponse,
+  getBuiltInToolMetadata,
+} from '../tools/toolCatalog.js'
+import { finalizeTurnArtifacts } from './turnFinalizer.js'
 
 export type TurnResult = {
   sessionId: string
@@ -35,6 +52,8 @@ export type TurnOptions = {
   echoToolRunner?: (args: { content: string }) => { output: string }
   searchToolRunner?: (args: { query: string }) => { output: string }
   readFileToolRunner?: (args: { filePath: string }) => { output: string }
+  listDirToolRunner?: (args: { dirPath: string }) => { output: string }
+  openUrlToolRunner?: (args: { url: string }) => Promise<{ output: string }>
   llmModelConfig?: ManagedLLMConfig
   llmResponder?: (args: {
     input: string
@@ -53,6 +72,9 @@ export type TurnOptions = {
     createdAt: string
   }) => void
   autoConsolidationConfig?: AutoConsolidationConfig
+  memoryDreamConfig?: MemoryDreamConfig
+  /** Feature flags snapshot — used to enable coordinator_mode and other gates. */
+  featureFlags?: ReadonlySet<import('../featureFlags.js').FeatureFlag>
 }
 
 function createEvent(
@@ -78,26 +100,6 @@ export async function runTurn(
   sessionId: string = randomUUID(),
   options: TurnOptions = {},
 ): Promise<TurnResult> {
-    const appendHistoryAndMaybeConsolidate = (finalResponse: string): void => {
-      memory.session.pushHistory(sessionId, { input: normalizedInput, response: finalResponse })
-      if (!options.autoConsolidationConfig) {
-        return
-      }
-
-      const consolidation = memory.maybeAutoConsolidate(sessionId, options.autoConsolidationConfig)
-      repository.save(
-        createEvent(
-          sessionId,
-          turnId,
-          consolidation.triggered ? 'memory_auto_consolidated' : 'memory_auto_consolidation_skipped',
-          {
-            reason: consolidation.reason,
-            removedCount: consolidation.removedCount,
-          },
-        ),
-      )
-    }
-
   const turnId = randomUUID()
   const turnStartedAt = Date.now()
   const permissionScope = options.permissionScope ?? 'project'
@@ -151,19 +153,27 @@ export async function runTurn(
   const readFilePayload = detectReadFileCommand(normalizedInput)
   const setPreferencePayload = detectSetPreferenceCommand(normalizedInput)
   const getPreferencePayload = detectGetPreferenceCommand(normalizedInput)
-  let response = 'I can run echo/search/read in this MVP. Try: echo hello, search runTurn, or read src/index.ts'
+  const listDirPayload = detectListDirCommand(normalizedInput)
+  const summarizePayload = detectSummarizeCommand(normalizedInput)
+  const openUrlPayload = detectOpenUrlCommand(normalizedInput)
+  const toolRequest = createBuiltInToolRequest({
+    echoPayload,
+    searchPayload,
+    readFilePayload,
+    listDirPayload,
+    openUrlPayload,
+  })
+  let response = 'I can run echo/search/read/list/summarize/open in this MVP. Try: echo hello, search runTurn, read src/index.ts, list src, summarize README.md, or open https://example.com'
 
-  const resolvedToolName = echoPayload
-    ? 'echo'
-    : searchPayload
-      ? 'search'
-      : readFilePayload
-        ? 'read-file'
-        : setPreferencePayload
-          ? 'set-preference'
-          : getPreferencePayload
-            ? 'get-preference'
-            : 'assistant'
+  const resolvedToolName = toolRequest
+    ? toolRequest.toolName
+    : summarizePayload
+      ? 'summarize'
+      : setPreferencePayload
+        ? 'set-preference'
+        : getPreferencePayload
+          ? 'get-preference'
+          : 'assistant'
 
   const permissionDecision = evaluatePermission(
     {
@@ -210,7 +220,15 @@ export async function runTurn(
       createEvent(sessionId, turnId, 'turn_completed', { response }),
     )
     sm.transitionTo('done')
-    appendHistoryAndMaybeConsolidate(response)
+    await finalizeTurnArtifacts({
+      sessionId,
+      turnId,
+      normalizedInput,
+      finalResponse: response,
+      repository,
+      memory,
+      options,
+    })
     return { sessionId, turnId, response }
   }
 
@@ -223,7 +241,15 @@ export async function runTurn(
       createEvent(sessionId, turnId, 'turn_completed', { response }),
     )
     sm.transitionTo('done')
-    appendHistoryAndMaybeConsolidate(response)
+    await finalizeTurnArtifacts({
+      sessionId,
+      turnId,
+      normalizedInput,
+      finalResponse: response,
+      repository,
+      memory,
+      options,
+    })
     return { sessionId, turnId, response }
   }
 
@@ -231,51 +257,84 @@ export async function runTurn(
     !echoPayload
     && !searchPayload
     && !readFilePayload
+    && !listDirPayload
+    && !summarizePayload
+    && !openUrlPayload
     && !setPreferencePayload
     && !getPreferencePayload
     && normalizedInput.toLowerCase() !== 'recall last echo'
     && permissionDecision.allowed
     && options.llmResponder
   ) {
-    if (options.llmModelConfig) {
+    const useCoordinator = isFeatureEnabled('coordinator_mode', options.featureFlags)
+
+    if (useCoordinator) {
       repository.save(
-        createEvent(sessionId, turnId, 'llm_model_resolved', {
-          model: options.llmModelConfig.model,
-          source: options.llmModelConfig.source,
-          fallbackModel: options.llmModelConfig.fallbackModel,
-          decisionLog: options.llmModelConfig.decisionLog,
+        createEvent(sessionId, turnId, 'llm_called', {
+          input: normalizedInput,
+          mode: 'coordinator',
         }),
       )
-    }
-    repository.save(
-      createEvent(sessionId, turnId, 'llm_called', {
-        input: normalizedInput,
-      }),
-    )
-    try {
-      const llmResponse = await options.llmResponder({
-        input: normalizedInput,
+      const coordResult = await runCoordinatorTurn(
+        normalizedInput,
         sessionId,
         turnId,
         rememberedLastEcho,
         contextBundle,
-      })
-      response = llmResponse.trim() || response
+        repository,
+        memory,
+        permissionRepository,
+        options,
+      )
+      response = coordResult.response
       repository.save(
         createEvent(sessionId, turnId, 'llm_result_received', {
           outputPreview: response.slice(0, 120),
+          coordinatorPhase: coordResult.phase,
+          researchCount: coordResult.findings.length,
         }),
       )
-    } catch (err) {
+    } else {
+      if (options.llmModelConfig) {
+        repository.save(
+          createEvent(sessionId, turnId, 'llm_model_resolved', {
+            model: options.llmModelConfig.model,
+            source: options.llmModelConfig.source,
+            fallbackModel: options.llmModelConfig.fallbackModel,
+            decisionLog: options.llmModelConfig.decisionLog,
+          }),
+        )
+      }
       repository.save(
-        createEvent(sessionId, turnId, 'llm_error', {
-          error: String(err),
+        createEvent(sessionId, turnId, 'llm_called', {
+          input: normalizedInput,
         }),
       )
+      try {
+        const llmResponse = await options.llmResponder({
+          input: normalizedInput,
+          sessionId,
+          turnId,
+          rememberedLastEcho,
+          contextBundle,
+        })
+        response = llmResponse.trim() || response
+        repository.save(
+          createEvent(sessionId, turnId, 'llm_result_received', {
+            outputPreview: response.slice(0, 120),
+          }),
+        )
+      } catch (err) {
+        repository.save(
+          createEvent(sessionId, turnId, 'llm_error', {
+            error: String(err),
+          }),
+        )
+      }
     }
   }
 
-  if ((echoPayload || searchPayload || readFilePayload) && permissionDecision.allowed) {
+  if (toolRequest && permissionDecision.allowed) {
     const elapsedMs = Date.now() - turnStartedAt
     if (options.turnTimeoutMs !== undefined && elapsedMs >= options.turnTimeoutMs) {
       sm.transitionTo('done')
@@ -295,7 +354,15 @@ export async function runTurn(
         createEvent(sessionId, turnId, 'turn_cancelled', { reason: 'timeout' }),
       )
       response = 'Turn cancelled: tool execution timed out.'
-      appendHistoryAndMaybeConsolidate(response)
+      await finalizeTurnArtifacts({
+        sessionId,
+        turnId,
+        normalizedInput,
+        finalResponse: response,
+        repository,
+        memory,
+        options,
+      })
       return { sessionId, turnId, response }
     }
 
@@ -307,31 +374,23 @@ export async function runTurn(
     })
     repository.save(
       createEvent(sessionId, turnId, 'tool_called', {
-        toolName: resolvedToolName,
-        content: echoPayload,
-        query: searchPayload,
-        filePath: readFilePayload,
+        ...buildBuiltInToolCalledPayload(toolRequest),
       }),
     )
 
-    const echoRunner = options.echoToolRunner ?? runEchoTool
-    const searchRunner = options.searchToolRunner ?? runSearchTool
-    const readFileRunner = options.readFileToolRunner ?? runReadFileTool
-    const maxRetries = options.maxToolRetries ?? 0
+    const maxRetries = options.maxToolRetries ?? getBuiltInToolMetadata(toolRequest.toolName).defaultMaxRetries
     let attempt = 0
     let toolResult!: { output: string }
     try {
       while (true) {
         try {
-          if (echoPayload) {
-            toolResult = echoRunner({ content: echoPayload })
-          } else if (searchPayload) {
-            toolResult = searchRunner({ query: searchPayload })
-          } else if (readFilePayload) {
-            toolResult = readFileRunner({ filePath: readFilePayload })
-          } else {
-            throw new Error('No supported tool payload found')
-          }
+          toolResult = await executeBuiltInTool(toolRequest, {
+            echoToolRunner: options.echoToolRunner,
+            searchToolRunner: options.searchToolRunner,
+            readFileToolRunner: options.readFileToolRunner,
+            listDirToolRunner: options.listDirToolRunner,
+            openUrlToolRunner: options.openUrlToolRunner,
+          })
           break
         } catch (err) {
           if (attempt < maxRetries) {
@@ -366,11 +425,19 @@ export async function runTurn(
         createEvent(sessionId, turnId, 'turn_completed', { response: 'Tool execution failed. Please try again.' }),
       )
       response = 'Tool execution failed. Please try again.'
-      appendHistoryAndMaybeConsolidate(response)
+      await finalizeTurnArtifacts({
+        sessionId,
+        turnId,
+        normalizedInput,
+        finalResponse: response,
+        repository,
+        memory,
+        options,
+      })
       return { sessionId, turnId, response }
     }
 
-    if (echoPayload) {
+    if (toolRequest.toolName === 'echo') {
       memory.persistent.set('last_echo_output', toolResult.output, 0.9)
     }
     memory.session.set(sessionId, 'last_response', toolResult.output)
@@ -388,11 +455,56 @@ export async function runTurn(
     })
 
     sm.transitionTo('feeding_back_result')
-    response = echoPayload
-      ? `Echo: ${toolResult.output}`
-      : searchPayload
-        ? `Search results:\n${toolResult.output}`
-        : `File:\n${toolResult.output}`
+    response = formatBuiltInToolResponse(toolRequest, toolResult.output)
+  }
+
+  // Summarize: two-step Research → Synthesis (inspired by Claude-Code Coordinator pattern)
+  // Step 1 (Research): read the file; Step 2 (Synthesis): LLM summarizes it
+  if (summarizePayload && permissionDecision.allowed) {
+    sm.transitionTo('executing_tool')
+    repository.save(
+      createEvent(sessionId, turnId, 'tool_called', {
+        toolName: 'summarize',
+        filePath: summarizePayload,
+      }),
+    )
+
+    const readResult = (options.readFileToolRunner ?? runReadFileTool)({ filePath: summarizePayload })
+    if (readResult.output.startsWith('Error:')) {
+      response = readResult.output
+    } else if (!options.llmResponder) {
+      response = `File content (no LLM configured for summarization):\n${readResult.output}`
+    } else {
+      repository.save(
+        createEvent(sessionId, turnId, 'llm_called', {
+          input: `summarize:${summarizePayload}`,
+        }),
+      )
+      try {
+        const summaryInput = `Please summarize the following file content concisely:\n\n${readResult.output}`
+        const llmResponse = await options.llmResponder({
+          input: summaryInput,
+          sessionId,
+          turnId,
+          rememberedLastEcho,
+          contextBundle,
+        })
+        response = `Summary of ${summarizePayload}:\n${llmResponse.trim()}`
+        repository.save(
+          createEvent(sessionId, turnId, 'llm_result_received', {
+            outputPreview: response.slice(0, 120),
+          }),
+        )
+      } catch (err) {
+        repository.save(
+          createEvent(sessionId, turnId, 'llm_error', { error: String(err) }),
+        )
+        response = `Failed to summarize ${summarizePayload}: ${String(err)}`
+      }
+    }
+
+    memory.session.set(sessionId, 'last_response', response)
+    sm.transitionTo('feeding_back_result')
   }
 
   sm.transitionTo('done')
@@ -402,7 +514,15 @@ export async function runTurn(
     }),
   )
 
-  appendHistoryAndMaybeConsolidate(response)
+  await finalizeTurnArtifacts({
+    sessionId,
+    turnId,
+    normalizedInput,
+    finalResponse: response,
+    repository,
+    memory,
+    options,
+  })
 
   return {
     sessionId,

@@ -34,6 +34,7 @@ import {
 import { findUtilityCommandByInput } from './commands/utilityRegistry.js'
 import {
   buildTurnExplanation,
+  formatDreamMetricsPanel,
   formatStatusPanel,
   formatTurnExplanation,
 } from './utils/interactionPanels.js'
@@ -62,6 +63,7 @@ import { renderTerminalDashboard } from './ui/renderers/terminalDashboard.js'
 import { resumeTaskFromLatestCheckpoint } from './agent/taskResume.js'
 import { executeSequentialTaskPlan, formatTaskExecutionResult } from './agent/taskExecutor.js'
 import { parseTaskRunCommand } from './agent/taskPlan.js'
+import type { MemoryDreamConfig } from './agent/memoryDream.js'
 
 function renderDashboardIfEnabled(
   sessionId: string,
@@ -113,6 +115,98 @@ function parseInputArgs(argv: string[]): { input: string; hasInput: boolean } {
     input: parsedInput || 'echo hello world',
     hasInput: parsedInput.length > 0,
   }
+}
+
+function parseMetricsWindowToMs(raw: string): number | null {
+  const normalized = raw.trim().toLowerCase()
+  const match = normalized.match(/^(\d+)([mhd])$/)
+  if (!match) {
+    return null
+  }
+
+  const amount = Number(match[1])
+  const unit = match[2]
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return null
+  }
+
+  if (unit === 'm') return amount * 60 * 1000
+  if (unit === 'h') return amount * 60 * 60 * 1000
+  if (unit === 'd') return amount * 24 * 60 * 60 * 1000
+  return null
+}
+
+function parseDreamMetricsArgs(raw: string, trigger: string): {
+  ok: boolean
+  limit: number
+  windowMs: number | null
+  windowLabel: string | null
+  errorMessage?: string
+} {
+  const tail = raw.slice(trigger.length).trim()
+  const tokens = tail.length > 0 ? tail.split(/\s+/) : []
+
+  let limit = 1000
+  let windowMs: number | null = null
+  let windowLabel: string | null = null
+
+  for (let i = 0; i < tokens.length; i += 1) {
+    const token = tokens[i]
+    if (token === '--limit') {
+      const value = tokens[i + 1]
+      const parsed = Number(value)
+      if (!value || !Number.isInteger(parsed) || parsed <= 0) {
+        return {
+          ok: false,
+          limit,
+          windowMs,
+          windowLabel,
+          errorMessage: 'Usage: /metrics dream [--limit <positive-integer>] [--window <Nm|Nh|Nd>]',
+        }
+      }
+      limit = Math.min(parsed, 10000)
+      i += 1
+      continue
+    }
+
+    if (token === '--window') {
+      const value = tokens[i + 1]
+      if (!value) {
+        return {
+          ok: false,
+          limit,
+          windowMs,
+          windowLabel,
+          errorMessage: 'Usage: /metrics dream [--limit <positive-integer>] [--window <Nm|Nh|Nd>]',
+        }
+      }
+
+      const parsed = parseMetricsWindowToMs(value)
+      if (parsed === null) {
+        return {
+          ok: false,
+          limit,
+          windowMs,
+          windowLabel,
+          errorMessage: 'Invalid --window value. Use one of: 30m, 12h, 7d',
+        }
+      }
+      windowMs = parsed
+      windowLabel = value.toLowerCase()
+      i += 1
+      continue
+    }
+
+    return {
+      ok: false,
+      limit,
+      windowMs,
+      windowLabel,
+      errorMessage: `Unknown option '${token}'. Usage: /metrics dream [--limit <positive-integer>] [--window <Nm|Nh|Nd>]`,
+    }
+  }
+
+  return { ok: true, limit, windowMs, windowLabel }
 }
 
 function formatResponse(response: string): string {
@@ -249,6 +343,52 @@ async function executeUtilityCommand(
         taskSummary,
         llmConfigSnapshot,
         uiState: uiState(),
+      })
+    }
+
+    if (utilityCommand.id === 'metrics_dream') {
+      const parsed = parseDreamMetricsArgs(raw, utilityCommand.trigger)
+      if (!parsed.ok) {
+        return colorWarn(parsed.errorMessage ?? 'Invalid /metrics dream arguments.')
+      }
+
+      const dreamEventsRaw = repository.listMemoryDreamEvents(parsed.limit)
+      const dreamEvents = parsed.windowMs === null
+        ? dreamEventsRaw
+        : dreamEventsRaw.filter(event => {
+          const createdAtMs = Date.parse(event.createdAt)
+          return Number.isFinite(createdAtMs) && createdAtMs >= (Date.now() - parsed.windowMs!)
+        })
+      const totalAttempts = dreamEvents.length
+      const completed = dreamEvents.filter(event => event.eventType === 'memory_dream_completed').length
+      const skipped = dreamEvents.filter(event => event.eventType === 'memory_dream_skipped').length
+      const totalWrites = dreamEvents.reduce((sum, event) => {
+        const wrote = event.payload['wroteFactCount']
+        return sum + (typeof wrote === 'number' && Number.isFinite(wrote) ? wrote : 0)
+      }, 0)
+
+      const reasonCodeHistogram = dreamEvents.reduce<Record<string, number>>((acc, event) => {
+        const code = typeof event.payload['reasonCode'] === 'string'
+          ? event.payload['reasonCode']
+          : 'UNKNOWN'
+        acc[code] = (acc[code] ?? 0) + 1
+        return acc
+      }, {})
+
+      const completionRate = totalAttempts > 0 ? completed / totalAttempts : 0
+      const skipRate = totalAttempts > 0 ? skipped / totalAttempts : 0
+
+      return formatDreamMetricsPanel({
+        limit: parsed.limit,
+        windowLabel: parsed.windowLabel ?? 'all-time',
+        sampledCount: dreamEvents.length,
+        totalAttempts,
+        completed,
+        skipped,
+        completionRate,
+        skipRate,
+        averageWritesPerAttempt: totalAttempts > 0 ? totalWrites / totalAttempts : 0,
+        reasonCodeHistogram,
       })
     }
 
@@ -652,13 +792,25 @@ async function main(): Promise<void> {
       minStaleFacts: parseNumberEnv(process.env.MEMORY_AUTO_CONSOLIDATE_MIN_STALE_FACTS, 3),
       minLowConfidenceFacts: parseNumberEnv(process.env.MEMORY_AUTO_CONSOLIDATE_MIN_LOW_CONF_FACTS, 5),
     }
+    const memoryDreamConfig: MemoryDreamConfig = {
+      enabled: isFeatureEnabled('memory_dream', featureFlags)
+        && parseBooleanEnv(process.env.MEMORY_DREAM_ENABLED, true),
+      minSessionCount: parseNumberEnv(process.env.MEMORY_DREAM_MIN_SESSIONS, 5),
+      minHoursSinceLastDream: parseNumberEnv(process.env.MEMORY_DREAM_MIN_HOURS, 24),
+      maxSourceTurns: parseNumberEnv(process.env.MEMORY_DREAM_MAX_SOURCE_TURNS, 8),
+      minFactConfidence: parseNumberEnv(process.env.MEMORY_DREAM_MIN_CONFIDENCE, 0.75),
+      maxFactsToWrite: parseNumberEnv(process.env.MEMORY_DREAM_MAX_FACTS, 6),
+      lockTtlMs: parseNumberEnv(process.env.MEMORY_DREAM_LOCK_TTL_MS, 30000),
+    }
     const taskId = `task-${randomUUID()}`
 
     const base: TurnOptions = {
       approveRisky,
       autoConsolidationConfig,
+      memoryDreamConfig,
       taskId,
       taskCheckpointWriter: createTaskCheckpointWriter(taskCheckpointRepository),
+      featureFlags,
     }
     const managed = buildManagedLLMConfig()
     if (managed && llmApiKey) {

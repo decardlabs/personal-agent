@@ -9,6 +9,7 @@ import { PersistentMemoryStore } from '../memory/persistentMemory.js'
 import { createMemoryCoordinator } from '../memory/memoryCoordinator.js'
 import { PreferenceStore } from '../memory/preferenceMemory.js'
 import { ToolPermissionRepository } from '../storage/toolPermissionRepository.js'
+import { parseFeatureFlags } from '../featureFlags.js'
 
 function createMemory(db: ReturnType<typeof initializeDatabase>) {
   const memoryRepository = new MemoryFactRepository(db)
@@ -62,7 +63,7 @@ describe('runTurn', () => {
     )
     const events = repository.listByTurn(result.sessionId, result.turnId)
 
-    expect(result.response).toContain('I can run echo/search/read in this MVP')
+    expect(result.response).toContain('I can run echo/search/read/list/summarize/open in this MVP')
     expect(events.map(event => event.eventType)).toEqual([
       'input_normalized',
       'reasoning_started',
@@ -283,6 +284,63 @@ describe('runTurn', () => {
     expect(events.some(e => e.eventType === 'llm_result_received')).toBe(true)
   })
 
+  it('uses coordinator synthesis path when coordinator_mode is enabled', async () => {
+    const db = initializeDatabase(':memory:')
+    applyMigrations(db)
+    const repository = new SessionEventRepository(db)
+    const memory = createMemory(db)
+    const permissionRepository = new ToolPermissionRepository(db)
+
+    const result = await runTurn(
+      'please analyze src/index.ts',
+      repository,
+      memory,
+      permissionRepository,
+      'session-coordinator-on',
+      {
+        featureFlags: parseFeatureFlags('coordinator_mode'),
+        readFileToolRunner: () => ({ output: 'File: src/index.ts\nexport const version = 1' }),
+        llmResponder: async args => `coord:${String(args.input.includes('Research findings:'))}`,
+      },
+    )
+    const events = repository.listByTurn(result.sessionId, result.turnId)
+    const llmCalled = events.find(e => e.eventType === 'llm_called')
+    const llmResult = events.find(e => e.eventType === 'llm_result_received')
+
+    expect(result.response).toBe('coord:true')
+    expect(llmCalled?.payload['mode']).toBe('coordinator')
+    expect(llmResult?.payload['coordinatorPhase']).toBeDefined()
+    expect(typeof llmResult?.payload['researchCount']).toBe('number')
+    expect(events.some(e => e.eventType === 'llm_model_resolved')).toBe(false)
+  })
+
+  it('uses direct llm path when coordinator_mode is disabled', async () => {
+    const db = initializeDatabase(':memory:')
+    applyMigrations(db)
+    const repository = new SessionEventRepository(db)
+    const memory = createMemory(db)
+    const permissionRepository = new ToolPermissionRepository(db)
+
+    const result = await runTurn(
+      'please analyze src/index.ts',
+      repository,
+      memory,
+      permissionRepository,
+      'session-coordinator-off',
+      {
+        llmResponder: async args => `direct:${String(args.input.includes('Research findings:'))}`,
+      },
+    )
+    const events = repository.listByTurn(result.sessionId, result.turnId)
+    const llmCalled = events.find(e => e.eventType === 'llm_called')
+    const llmResult = events.find(e => e.eventType === 'llm_result_received')
+
+    expect(result.response).toBe('direct:false')
+    expect(llmCalled?.payload['mode']).toBeUndefined()
+    expect(llmResult?.payload['coordinatorPhase']).toBeUndefined()
+    expect(llmResult?.payload['researchCount']).toBeUndefined()
+  })
+
   it('emits llm_model_resolved event with decisionLog when llmModelConfig is provided', async () => {
     const db = initializeDatabase(':memory:')
     applyMigrations(db)
@@ -387,6 +445,46 @@ describe('runTurn', () => {
 
     const events = repository.listByTurn(result.sessionId, result.turnId)
     expect(events.some(e => e.eventType === 'memory_auto_consolidation_skipped')).toBe(true)
+  })
+
+  it('runs memory dream after a turn when the feature flag is enabled', async () => {
+    const db = initializeDatabase(':memory:')
+    applyMigrations(db)
+    const repository = new SessionEventRepository(db)
+    const memory = createMemory(db)
+    const permissionRepository = new ToolPermissionRepository(db)
+
+    const result = await runTurn(
+      'echo dream-trigger',
+      repository,
+      memory,
+      permissionRepository,
+      'session-memory-dream',
+      {
+        featureFlags: parseFeatureFlags('memory_dream'),
+        memoryDreamConfig: {
+          enabled: true,
+          minSessionCount: 1,
+          minHoursSinceLastDream: 0,
+          maxSourceTurns: 4,
+          minFactConfidence: 0.75,
+          maxFactsToWrite: 3,
+          lockTtlMs: 1000,
+        },
+        llmResponder: async () => JSON.stringify([
+          { key: 'favorite_repo', value: 'personal-agent', confidence: 0.91 },
+        ]),
+      },
+    )
+
+    const events = repository.listByTurn(result.sessionId, result.turnId)
+    const dreamEvent = events.find(e => e.eventType === 'memory_dream_completed')
+
+    expect(dreamEvent).toBeDefined()
+    expect(dreamEvent?.payload['wroteFactCount']).toBe(1)
+    expect(dreamEvent?.payload['reasonCode']).toBe('TRIGGERED')
+    expect(dreamEvent?.payload['guidance']).toBe('healthy: dream executed successfully')
+    expect(memory.persistent.get('favorite_repo')).toBe('personal-agent')
   })
 
   it('writes task checkpoints before and after successful tool execution', async () => {

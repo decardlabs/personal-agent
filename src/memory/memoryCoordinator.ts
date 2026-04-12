@@ -27,6 +27,57 @@ export type MemoryDiagnostics = {
   writeDecisionsAllowed: number
   writeDecisionsRejected: number
   writeDecisionAcceptanceRate: number
+  // Memory Dream observability
+  lastMemoryDreamAt?: string | null
+  lastMemoryDreamWriteCount?: number
+  lastMemoryDreamStatus?: string | null
+  lastMemoryDreamReason?: string | null
+  lastMemoryDreamReasonCode?: string | null
+  lastMemoryDreamGuidance?: string | null
+}
+
+function mapMemoryDreamReasonCode(reason: string | null): string | null {
+  if (!reason) {
+    return null
+  }
+  if (reason === 'locked') return 'LOCKED'
+  if (reason === 'disabled') return 'DISABLED'
+  if (reason === 'llm_unavailable') return 'LLM_OFF'
+  if (reason === 'llm_failed') return 'LLM_FAIL'
+  if (reason === 'triggered') return 'TRIGGERED'
+  if (reason === 'triggered_no_facts') return 'NO_FACTS'
+  if (reason.startsWith('too_soon:')) return 'COOLDOWN'
+  if (reason.startsWith('insufficient_sessions:')) return 'MIN_SESSIONS'
+  return 'OTHER'
+}
+
+function describeMemoryDreamReason(code: string | null): string | null {
+  if (!code) {
+    return null
+  }
+
+  switch (code) {
+    case 'TRIGGERED':
+      return 'healthy: dream executed successfully'
+    case 'NO_FACTS':
+      return 'executed: no durable facts extracted'
+    case 'COOLDOWN':
+      return 'wait: dream cooldown window not reached'
+    case 'LOCKED':
+      return 'wait: another dream cycle is in progress'
+    case 'MIN_SESSIONS':
+      return 'collect: more session history required'
+    case 'LLM_OFF':
+      return 'configure: set OPENAI_API_KEY to enable dream synthesis'
+    case 'LLM_FAIL':
+      return 'retry: LLM call failed during dream cycle'
+    case 'DISABLED':
+      return 'disabled: enable memory_dream feature flag'
+    case 'OTHER':
+      return 'inspect: check raw dream reason for details'
+    default:
+      return 'unknown: no dream result recorded yet'
+  }
 }
 
 export type AutoConsolidationConfig = {
@@ -146,6 +197,9 @@ export function createMemoryCoordinator(
         ? writeDecisionsAllowed / writeDecisionsTotal
         : 1 // No decisions yet: consider as perfect (1.0)
       
+      const lastMemoryDreamReason = persistent.get('__last_memory_dream_reason')
+      const lastMemoryDreamReasonCode = mapMemoryDreamReasonCode(lastMemoryDreamReason)
+
       return {
         historyTurns: sessionStore.getHistory(sessionId).length,
         preferenceCount: preferences.listAll().length,
@@ -158,6 +212,12 @@ export function createMemoryCoordinator(
         writeDecisionsAllowed,
         writeDecisionsRejected,
         writeDecisionAcceptanceRate,
+        lastMemoryDreamAt: persistent.get('__last_memory_dream_at'),
+        lastMemoryDreamWriteCount: Number(persistent.get('__last_memory_dream_wrote_count') ?? 0),
+        lastMemoryDreamStatus: persistent.get('__last_memory_dream_status'),
+        lastMemoryDreamReason,
+        lastMemoryDreamReasonCode,
+        lastMemoryDreamGuidance: describeMemoryDreamReason(lastMemoryDreamReasonCode),
       }
     },
     maybeAutoConsolidate: (sessionId, config) => {

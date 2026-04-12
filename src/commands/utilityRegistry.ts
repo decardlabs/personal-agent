@@ -13,6 +13,7 @@ export type UtilityCommandSpec = {
   | 'dashboard_compact'
   | 'dashboard_detailed'
   | 'status'
+  | 'metrics_dream'
   | 'model'
   | 'model_clear'
   | 'model_set'
@@ -105,6 +106,14 @@ const UTILITY_COMMAND_REGISTRY: UtilityCommandSpec[] = [
     id: 'status',
     trigger: '/status',
     description: 'Show runtime status for model, memory, permissions, and flags',
+  },
+  {
+    command: '/metrics dream [--limit <n>] [--window <Nm|Nh|Nd>]',
+    id: 'metrics_dream',
+    trigger: '/metrics dream',
+    description: 'Show memory-dream operational metrics (rates, reason codes, writes)',
+    matchMode: 'prefix',
+    assistTrigger: '/metrics dream',
   },
   {
     command: '/model',

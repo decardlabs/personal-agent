@@ -1,4 +1,5 @@
 import type { TurnEventType } from '../agent/types.js'
+import type { FeatureFlag } from '../featureFlags.js'
 
 export type ReplayStep = {
   input: string
@@ -8,7 +9,10 @@ export type ReplayStep = {
   turnTimeoutMs?: number
   mockSearchOutput?: string
   mockReadFileOutput?: string
-  mockLlmResponderMode?: 'facts_summary'
+  mockListDirOutput?: string
+  mockOpenUrlOutput?: string
+  mockLlmResponderMode?: 'facts_summary' | 'coordinator_probe'
+  featureFlags?: FeatureFlag[]
   memoryIntent?: 'required' | 'not_required' | 'neutral'
 }
 
@@ -76,7 +80,7 @@ export const replayCases: ReplayCase[] = [
     name: 'fallback response for unsupported command',
     sessionId: 'replay-session-5',
     steps: [{ input: 'list all files please', memoryIntent: 'not_required' }],
-    expectedResponses: ['I can run echo/search/read in this MVP. Try: echo hello, search runTurn, or read src/index.ts'],
+    expectedResponses: ['I can run echo/search/read/list/summarize/open in this MVP. Try: echo hello, search runTurn, read src/index.ts, list src, summarize README.md, or open https://example.com'],
   },
   {
     name: 'multi-turn echo sequence',
@@ -97,13 +101,13 @@ export const replayCases: ReplayCase[] = [
     name: 'empty input treated as fallback',
     sessionId: 'replay-session-8',
     steps: [{ input: '', memoryIntent: 'not_required' }],
-    expectedResponses: ['I can run echo/search/read in this MVP. Try: echo hello, search runTurn, or read src/index.ts'],
+    expectedResponses: ['I can run echo/search/read/list/summarize/open in this MVP. Try: echo hello, search runTurn, read src/index.ts, list src, summarize README.md, or open https://example.com'],
   },
   {
     name: 'whitespace-only input treated as fallback',
     sessionId: 'replay-session-9',
     steps: [{ input: '   ', memoryIntent: 'not_required' }],
-    expectedResponses: ['I can run echo/search/read in this MVP. Try: echo hello, search runTurn, or read src/index.ts'],
+    expectedResponses: ['I can run echo/search/read/list/summarize/open in this MVP. Try: echo hello, search runTurn, read src/index.ts, list src, summarize README.md, or open https://example.com'],
   },
   {
     name: 'turn cancelled on timeout',
@@ -284,5 +288,93 @@ export const replayCases: ReplayCase[] = [
     expectedResponsePatterns: [
       String.raw`^Task 'task-[^']+' finished with status completed\.\n- mode: sequential\n- progress: 3/3\n- step 1 \(stage-1-step-1\): completed \| Echo: alpha\n- step 2 \(stage-2-step-1\): completed \| Echo: beta\n- step 3 \(stage-3-step-1\): completed \| Echo: compound-ok$`,
     ],
+  },
+  {
+    name: 'list-dir with mocked output',
+    sessionId: 'replay-session-23',
+    steps: [{
+      input: 'list src',
+      mockListDirOutput: 'Directory: src (3 entries)\n  agent/\n  tools/\n  index.ts',
+      memoryIntent: 'not_required',
+    }],
+    expectedResponses: ['Directory listing:\nDirectory: src (3 entries)\n  agent/\n  tools/\n  index.ts'],
+    expectedEventTypes: [[
+      'input_normalized',
+      'reasoning_started',
+      'tool_called',
+      'tool_result_received',
+      'turn_completed',
+    ]],
+  },
+  {
+    name: 'open-url blocked without approval',
+    sessionId: 'replay-session-24',
+    steps: [{
+      input: 'open https://example.com',
+      memoryIntent: 'not_required',
+    }],
+    expectedResponses: ['Permission required for risky input. Re-run with explicit approval.'],
+    expectedEventTypes: [[
+      'input_normalized',
+      'reasoning_started',
+      'permission_required',
+      'turn_completed',
+    ]],
+  },
+  {
+    name: 'open-url with approval and mocked output',
+    sessionId: 'replay-session-25',
+    steps: [{
+      input: 'open https://example.com',
+      approveRisky: true,
+      mockOpenUrlOutput: 'URL: https://example.com\n\nExample Domain',
+      memoryIntent: 'not_required',
+    }],
+    expectedResponses: ['Fetched content:\nURL: https://example.com\n\nExample Domain'],
+    expectedEventTypes: [[
+      'input_normalized',
+      'reasoning_started',
+      'permission_granted',
+      'tool_called',
+      'tool_result_received',
+      'turn_completed',
+    ]],
+  },
+  {
+    name: 'coordinator mode synthesizes research before LLM response',
+    sessionId: 'replay-session-26',
+    steps: [{
+      input: 'analyze src/index.ts',
+      mockReadFileOutput: 'File: src/index.ts\nexport const marker = true',
+      mockLlmResponderMode: 'coordinator_probe',
+      featureFlags: ['coordinator_mode'],
+      memoryIntent: 'required',
+    }],
+    expectedResponses: ['Coordinator probe: researched=true target=true'],
+    expectedEventTypes: [[
+      'input_normalized',
+      'reasoning_started',
+      'llm_called',
+      'llm_result_received',
+      'turn_completed',
+    ]],
+  },
+  {
+    name: 'direct llm path remains active when coordinator mode is disabled',
+    sessionId: 'replay-session-27',
+    steps: [{
+      input: 'analyze src/index.ts',
+      mockReadFileOutput: 'File: src/index.ts\nexport const marker = true',
+      mockLlmResponderMode: 'coordinator_probe',
+      memoryIntent: 'required',
+    }],
+    expectedResponses: ['Coordinator probe: researched=false target=true'],
+    expectedEventTypes: [[
+      'input_normalized',
+      'reasoning_started',
+      'llm_called',
+      'llm_result_received',
+      'turn_completed',
+    ]],
   },
 ]

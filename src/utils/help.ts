@@ -35,6 +35,7 @@ ${REGISTERED_UTILITY_LINES}
   > set preference lang python
   > get preference lang
   > recall last echo
+  > /metrics dream
 
 💡 TIP: In interactive mode, use /history to browse your commands!
 `

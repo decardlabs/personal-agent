@@ -65,4 +65,55 @@ export class SessionEventRepository {
       createdAt: row.created_at,
     }))
   }
+
+  countDistinctSessions(): number {
+    const row = this.db
+      .prepare(
+        `SELECT COUNT(DISTINCT session_id) AS count
+         FROM session_events`,
+      )
+      .get() as { count: number }
+
+    return row.count
+  }
+
+  listRecentTurnCompleted(limit = 20): TurnEvent[] {
+    const rows = this.db
+      .prepare(
+        `SELECT session_id, turn_id, event_type, payload_json, created_at
+         FROM session_events
+         WHERE event_type = 'turn_completed'
+         ORDER BY id DESC
+         LIMIT ?`,
+      )
+      .all(limit) as SessionEventRow[]
+
+    return rows.map(row => ({
+      sessionId: row.session_id,
+      turnId: row.turn_id,
+      eventType: row.event_type,
+      payload: JSON.parse(row.payload_json) as Record<string, unknown>,
+      createdAt: row.created_at,
+    }))
+  }
+
+  listMemoryDreamEvents(limit = 500): TurnEvent[] {
+    const rows = this.db
+      .prepare(
+        `SELECT session_id, turn_id, event_type, payload_json, created_at
+         FROM session_events
+         WHERE event_type IN ('memory_dream_completed', 'memory_dream_skipped')
+         ORDER BY id DESC
+         LIMIT ?`,
+      )
+      .all(limit) as SessionEventRow[]
+
+    return rows.map(row => ({
+      sessionId: row.session_id,
+      turnId: row.turn_id,
+      eventType: row.event_type,
+      payload: JSON.parse(row.payload_json) as Record<string, unknown>,
+      createdAt: row.created_at,
+    }))
+  }
 }

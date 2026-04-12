@@ -115,6 +115,8 @@ function isRiskyByRegex(input: string): boolean {
     /\brm\b\s+[^\n]*-(?:[a-z]*r[a-z]*f|[a-z]*f[a-z]*r)\b/i,
     /(curl|wget)\s+[^|]*\|\s*(sh|bash|zsh)\b/i,
     />\s*\/dev\//i,
+    // URL fetch commands always require explicit approval (SSRF / data exfiltration)
+    /^(open|fetch)\s+https?:\/\//i,
   ]
 
   return riskyPatterns.some(pattern => pattern.test(input))
@@ -158,6 +160,13 @@ export function getPermissionKey(input: string): string {
   if (hasChainedRiskyCommand(tokens, input)) {
     const riskyToken = tokens.find(t => STRUCTURED_RISK_COMMANDS.has(t)) ?? firstToken
     return `perm:chain:${riskyToken}`
+  }
+
+  // URL fetch: use the domain as scope key
+  const urlMatch = /^(?:open|fetch)\s+(https?:\/\/[^\s/]+)/i.exec(input)
+  if (urlMatch) {
+    const domain = urlMatch[1]
+    return `perm:url:${domain}`
   }
 
   // regex-only risk: use first command word

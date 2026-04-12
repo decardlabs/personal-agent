@@ -117,6 +117,7 @@ When running in interactive mode, you can use these utility commands:
 - `/status`: Show runtime status for model, memory, permissions, feature flags, and latest turn summary.
 - `/diag`: Show memory diagnostics counters.
 - `/diag --json`: Export memory diagnostics as JSON (for CI/gating).
+- `/metrics dream`: Show memory-dream operational metrics (completion/skip rates, reason-code histogram, average writes).
 - `/model`: Show active LLM model policy (source, fallback, retries, aliases).
 - `/model set <value>`: Set preferred model alias or explicit model name (validated against allowlist).
 - `/model clear`: Clear preferred model and return to env/default policy.
@@ -157,6 +158,7 @@ npm run dev
 > /status                            # Inspect runtime status panel
 > /diag                              # View memory diagnostics
 > /diag --json                       # Export diagnostics in JSON
+> /metrics dream                     # Inspect memory-dream operational metrics
 > /model                             # Inspect active model policy
 > /model set quality                 # Prefer high-quality model alias
 > /model clear                       # Remove preference and use env/default
@@ -236,6 +238,9 @@ Feature flags are provided through `FEATURE_FLAGS` as a comma-separated list.
 
 - `verbose_diag`: enrich `/diag` output with ranked facts and active model details
 - `ui_tui_mvp`: render a read-only terminal dashboard around the current REPL loop
+- `coordinator_mode`: enable coordinator research+synthesis path for complex non-tool inputs
+- `memory_dream`: enable periodic memory dream consolidation and observability events
+- `verbose_tools`: emit verbose tool-call diagnostics for replay/debug analysis
 
 Example:
 

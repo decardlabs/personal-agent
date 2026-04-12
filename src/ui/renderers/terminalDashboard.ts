@@ -108,6 +108,31 @@ function formatMemorySummaryValue(action: MemoryDiagnostics['recommendedAction']
   return '!!HOT'
 }
 
+function describeMemoryDreamReason(code: string | null): string {
+  switch (code) {
+    case 'TRIGGERED':
+      return 'healthy'
+    case 'NO_FACTS':
+      return 'no_facts'
+    case 'COOLDOWN':
+      return 'cooldown'
+    case 'LOCKED':
+      return 'locked'
+    case 'MIN_SESSIONS':
+      return 'need_sessions'
+    case 'LLM_OFF':
+      return 'llm_off'
+    case 'LLM_FAIL':
+      return 'llm_fail'
+    case 'DISABLED':
+      return 'disabled'
+    case 'OTHER':
+      return 'other'
+    default:
+      return 'unknown'
+  }
+}
+
 function shouldShowHotDetailedHint(action: MemoryDiagnostics['recommendedAction'], mode: NonNullable<TerminalDashboardInput['mode']>): boolean {
   return action === 'consolidate' && mode !== 'detailed'
 }
@@ -393,6 +418,12 @@ export function renderTerminalDashboard(input: TerminalDashboardInput): string {
 
   const memoryRows = [
     { label: 'memory action', value: input.diagnostics.recommendedAction },
+    { label: 'dream last run', value: input.diagnostics.lastMemoryDreamAt ?? '(never)' },
+    { label: 'dream status', value: input.diagnostics.lastMemoryDreamStatus ?? '(unknown)' },
+    { label: 'dream code', value: input.diagnostics.lastMemoryDreamReasonCode ?? '(none)' },
+    { label: 'dream reason', value: input.diagnostics.lastMemoryDreamReason ?? '(none)' },
+    { label: 'dream hint', value: describeMemoryDreamReason(input.diagnostics.lastMemoryDreamReasonCode ?? null) },
+    { label: 'dream writes', value: String(input.diagnostics.lastMemoryDreamWriteCount ?? 0) },
     { label: 'history turns', value: String(input.diagnostics.historyTurns) },
     { label: 'persistent facts', value: String(input.diagnostics.persistentFactCount) },
     { label: 'stale facts', value: String(input.diagnostics.staleFactCount) },
@@ -425,8 +456,8 @@ export function renderTerminalDashboard(input: TerminalDashboardInput): string {
     ], panelWidth, topRows)
     const compactMemory = renderPanel('Memory', [
       memoryRows[0],
-      memoryRows[2],
-      memoryRows[5],
+      memoryRows[3],
+      memoryRows[6],
     ], panelWidth, bottomRows)
     const compactLlm = renderPanel('LLM', [
       llmRows[0],

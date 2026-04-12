@@ -3,6 +3,7 @@ import type { TurnEvent } from '../agent/types.js'
 import {
   buildLatestTurnSummary,
   buildTurnExplanation,
+  formatDreamMetricsPanel,
   formatStatusPanel,
   formatTurnExplanation,
 } from './interactionPanels.js'
@@ -36,6 +37,11 @@ describe('interactionPanels', () => {
         writeDecisionsAllowed: 8,
         writeDecisionsRejected: 2,
         writeDecisionAcceptanceRate: 0.8,
+        lastMemoryDreamAt: '2026-04-12T11:40:00.000Z',
+        lastMemoryDreamWriteCount: 2,
+        lastMemoryDreamStatus: 'completed',
+        lastMemoryDreamReason: 'triggered',
+        lastMemoryDreamReasonCode: 'TRIGGERED',
       },
       taskSummary: {
         totalTasks: 4,
@@ -89,6 +95,10 @@ describe('interactionPanels', () => {
     expect(output).toContain('feature flags: verbose_diag')
     expect(output).toContain('llm: enabled (gpt-4o-mini via preference)')
     expect(output).toContain('memory action: review')
+    expect(output).toContain('memory dream status: completed')
+    expect(output).toContain('memory dream reason code: TRIGGERED')
+    expect(output).toContain('memory dream reason: triggered')
+    expect(output).toContain('memory dream guidance: healthy: dream executed successfully')
     expect(output).toContain('tasks: 4 total (1 active, 1 failed)')
     expect(output).toContain('latest task: task-42')
     expect(output).toContain('latest turn events: 6')
@@ -166,5 +176,35 @@ describe('interactionPanels', () => {
     expect(summary?.eventCount).toBe(6)
     expect(summary?.toolName).toBe('search')
     expect(summary?.usedLLM).toBe(false)
+  })
+
+  it('formats memory dream metrics panel with sorted reason counts', () => {
+    const output = formatDreamMetricsPanel({
+      limit: 1000,
+      windowLabel: 'all-time',
+      sampledCount: 10,
+      totalAttempts: 10,
+      completed: 4,
+      skipped: 6,
+      completionRate: 0.4,
+      skipRate: 0.6,
+      averageWritesPerAttempt: 1.2,
+      reasonCodeHistogram: {
+        COOLDOWN: 4,
+        TRIGGERED: 4,
+        LOCKED: 2,
+      },
+    })
+
+    expect(output).toContain('Memory Dream Metrics')
+    expect(output).toContain('window: all-time')
+    expect(output).toContain('limit: 1000')
+    expect(output).toContain('sampled: 10')
+    expect(output).toContain('attempts: 10')
+    expect(output).toContain('completion rate: 40.0%')
+    expect(output).toContain('avg writes/attempt: 1.20')
+    expect(output).toContain('TRIGGERED: 4')
+    expect(output).toContain('COOLDOWN: 4')
+    expect(output).toContain('LOCKED: 2')
   })
 })

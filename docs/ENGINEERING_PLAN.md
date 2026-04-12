@@ -136,6 +136,15 @@ Acceptance:
 9. Enrich `llmResponder` call with context snapshot + persistent memory facts + session history.
 10. Write back confident LLM results to `PersistentMemoryStore` (threshold: confidence ≥ 0.8).
 
+## Next Sprint — M5 Platformization Start
+
+1. Record an end-to-end runtime platformization roadmap and sequence it into low-risk slices.
+2. Introduce a declarative builtin-tool catalog so execution policy is metadata-driven rather than encoded inline in `runTurn`.
+3. Refactor `runTurn` to consume that tool catalog without changing current CLI behavior or replay expectations.
+4. Add first-class lifecycle seams for runtime hooks after the tool catalog lands.
+5. Separate memory system metadata/bookkeeping from durable fact retrieval paths.
+6. Prepare a minimal control-plane contract for sessions, events, and runtime diagnostics.
+
 ## Progress Update — 2026-04-04 (Phase A)
 
 Completed:
@@ -172,6 +181,14 @@ Execution rule:
 1. Prioritize rows marked `Early` that unblock reliability or safety.
 2. Land each row as independently testable slices with replay coverage.
 3. Keep roadmap and changelog synchronized after each row reaches `Partial` or `Strong`.
+
+## Platformization Delivery Sequence
+
+1. Tool contract foundation: central registry for builtin tools, execution metadata, and response formatting.
+2. Runtime seam extraction: move inline orchestration into reusable lifecycle helpers while keeping CLI entry unchanged.
+3. Memory backend boundary: preserve current builtin stores but isolate provider-facing contracts and system metadata.
+4. Task engine upgrade: evolve resumable steps into typed task execution contracts.
+5. Control plane: expose session/event/diagnostic queries behind one service surface for CLI, tests, and future UI/channel adapters.
 
 ## Definition of Done
 

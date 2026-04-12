@@ -15,6 +15,8 @@ export type TurnEventType =
   | 'tool_error'
   | 'memory_auto_consolidated'
   | 'memory_auto_consolidation_skipped'
+  | 'memory_dream_completed'
+  | 'memory_dream_skipped'
   | 'llm_model_resolved'
   | 'turn_cancelled'
   | 'turn_completed'

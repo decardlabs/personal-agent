@@ -12,10 +12,13 @@ The format is based on Keep a Changelog and Semantic Versioning.
 - `/task`, `/task latest`, `/task checkpoints <taskId>`, and `/task resume <taskId>` utility commands.
 - Shared task resume helper reused by CLI and replay runner.
 - Replay coverage for checkpoint timeout -> resume -> complete flow.
+- v0.4.0 platformization execution plan recorded in `docs/releases/V0_4_0_EXECUTION_PLAN.md`.
+- Declarative builtin tool catalog foundation for centralized tool execution metadata and formatting.
 
 ### Changed
 
 - Diagnostics, status panel, and dashboard now expose task metrics (total, active, failed, latest checkpoint).
+- Engineering roadmap extended with the M5 runtime platformization track.
 
 ### Fixed
 

@@ -14,6 +14,7 @@ import { executeSequentialTaskPlan, formatTaskExecutionResult } from '../agent/t
 import { parseTaskRunCommand } from '../agent/taskPlan.js'
 import type { TurnEvent, TurnEventType } from '../agent/types.js'
 import type { ReplayCase } from './replayCases.js'
+import { parseFeatureFlags } from '../featureFlags.js'
 
 export type ReplayStepResult = {
   input: string
@@ -324,8 +325,17 @@ export async function runReplayCase(testCase: ReplayCase): Promise<ReplayCaseRes
       ? () => ({ output: step.mockReadFileOutput as string })
       : undefined
 
+    const listDirToolRunner = step.mockListDirOutput
+      ? () => ({ output: step.mockListDirOutput as string })
+      : undefined
+
+    const openUrlToolRunner = step.mockOpenUrlOutput
+      ? async () => ({ output: step.mockOpenUrlOutput as string })
+      : undefined
+
     const llmResponder = step.mockLlmResponderMode
       ? async (args: {
+        input: string
         contextBundle: {
           persistentFacts: Array<{ key: string }>
         }
@@ -333,6 +343,13 @@ export async function runReplayCase(testCase: ReplayCase): Promise<ReplayCaseRes
         if (step.mockLlmResponderMode === 'facts_summary') {
           const keys = args.contextBundle.persistentFacts.map(fact => fact.key)
           return `LLM facts: ${keys.length > 0 ? keys.join(',') : '(none)'}`
+        }
+
+        if (step.mockLlmResponderMode === 'coordinator_probe') {
+          return [
+            `Coordinator probe: researched=${String(args.input.includes('Research findings:'))}`,
+            `target=${String(args.input.includes('src/index.ts'))}`,
+          ].join(' ')
         }
 
         return 'LLM mock responder unavailable.'
@@ -345,7 +362,12 @@ export async function runReplayCase(testCase: ReplayCase): Promise<ReplayCaseRes
       turnTimeoutMs: step.turnTimeoutMs,
       searchToolRunner,
       readFileToolRunner,
+      listDirToolRunner,
+      openUrlToolRunner,
       llmResponder,
+      featureFlags: step.featureFlags
+        ? parseFeatureFlags(step.featureFlags.join(','))
+        : undefined,
       taskCheckpointWriter: step.taskId ? checkpointWriter : undefined,
     }
 

@@ -10,7 +10,7 @@ export type TaskPlanStep = {
 
 export type TaskStepCompoundCondition = {
   combinator: 'and' | 'or'
-  clauses: TaskStepCondition[]
+  clauses: Array<TaskStepCondition | TaskStepCompoundCondition>
 }
 
 export function isCompoundCondition(
@@ -81,51 +81,99 @@ function parseSingleConditionClause(body: string): TaskStepCondition | null {
   return { source, operator, value }
 }
 
-function splitOnCombinator(body: string): { clauses: string[]; combinator: 'and' | 'or' } | null {
+function splitOnTopLevel(body: string, op: 'and' | 'or'): string[] {
   const parts: string[] = []
-  const combinators: ('and' | 'or')[] = []
   let current = ''
+  let depth = 0
   let inQuote = false
   let quoteChar = ''
-  for (let i = 0; i < body.length; i++) {
+  const pattern = new RegExp(`^\\s+${op}\\s+`, 'i')
+  let i = 0
+  while (i < body.length) {
     const ch = body[i] as string
     if (inQuote) {
       current += ch
       if (ch === quoteChar) inQuote = false
+      i++
       continue
     }
     if (ch === '"' || ch === "'") {
       inQuote = true
       quoteChar = ch
       current += ch
+      i++
       continue
     }
-    const rest = body.slice(i)
-    const andMatch = rest.match(/^\s+and\s+/i)
-    const orMatch = rest.match(/^\s+or\s+/i)
-    if (andMatch) {
-      parts.push(current.trim())
-      combinators.push('and')
-      current = ''
-      i += andMatch[0].length - 1
-      continue
-    }
-    if (orMatch) {
-      parts.push(current.trim())
-      combinators.push('or')
-      current = ''
-      i += orMatch[0].length - 1
-      continue
+    if (ch === '(') { depth++; current += ch; i++; continue }
+    if (ch === ')') { depth--; current += ch; i++; continue }
+    if (depth === 0) {
+      const rest = body.slice(i)
+      const m = rest.match(pattern)
+      if (m) {
+        parts.push(current.trim())
+        current = ''
+        i += m[0].length
+        continue
+      }
     }
     current += ch
+    i++
   }
-  if (current.trim()) {
-    parts.push(current.trim())
+  if (current.trim()) parts.push(current.trim())
+  return parts
+}
+
+function findMatchingClose(str: string, openPos: number): number {
+  let depth = 0
+  let inQuote = false
+  let quoteChar = ''
+  for (let i = openPos; i < str.length; i++) {
+    const ch = str[i] as string
+    if (inQuote) {
+      if (ch === quoteChar) inQuote = false
+      continue
+    }
+    if (ch === '"' || ch === "'") { inQuote = true; quoteChar = ch; continue }
+    if (ch === '(') depth++
+    if (ch === ')') {
+      depth--
+      if (depth === 0) return i
+    }
   }
-  if (parts.length < 2 || combinators.length === 0) {
-    return null
+  return -1
+}
+
+function parseConditionExpr(body: string): TaskStepCondition | TaskStepCompoundCondition | null {
+  const trimmed = body.trim()
+
+  // Strip fully-wrapped parentheses when opening paren matches the last char
+  if (trimmed.startsWith('(') && findMatchingClose(trimmed, 0) === trimmed.length - 1) {
+    return parseConditionExpr(trimmed.slice(1, -1).trim())
   }
-  return { clauses: parts, combinator: combinators[0] as 'and' | 'or' }
+
+  // 'or' has lower precedence — split on top-level 'or' first
+  const orParts = splitOnTopLevel(trimmed, 'or')
+  if (orParts.length > 1) {
+    const clauses = orParts
+      .map(p => parseConditionExpr(p))
+      .filter((c): c is TaskStepCondition | TaskStepCompoundCondition => c !== null)
+    if (clauses.length >= 2) {
+      return { combinator: 'or', clauses }
+    }
+  }
+
+  // 'and' has higher precedence — split on top-level 'and' next
+  const andParts = splitOnTopLevel(trimmed, 'and')
+  if (andParts.length > 1) {
+    const clauses = andParts
+      .map(p => parseConditionExpr(p))
+      .filter((c): c is TaskStepCondition | TaskStepCompoundCondition => c !== null)
+    if (clauses.length >= 2) {
+      return { combinator: 'and', clauses }
+    }
+  }
+
+  return parseSingleConditionClause(trimmed)
 }
 
 function parseConditionalStep(input: string): { commandInput: string; condition?: TaskStepCondition | TaskStepCompoundCondition } {
@@ -138,21 +186,7 @@ function parseConditionalStep(input: string): { commandInput: string; condition?
   if (!condBody || !commandInput) {
     return { commandInput: input }
   }
-
-  const splitResult = splitOnCombinator(condBody)
-  if (splitResult) {
-    const clauses = splitResult.clauses
-      .map(c => parseSingleConditionClause(c))
-      .filter((c): c is TaskStepCondition => c !== null)
-    if (clauses.length >= 2) {
-      return {
-        commandInput,
-        condition: { combinator: splitResult.combinator, clauses },
-      }
-    }
-  }
-
-  const condition = parseSingleConditionClause(condBody)
+  const condition = parseConditionExpr(condBody)
   if (!condition) {
     return { commandInput: input }
   }
